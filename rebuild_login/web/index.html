@@ -1,0 +1,352 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>掌上考勤 - 多账号测试台</title>
+    <link rel="stylesheet" href="/styles.css?v=20260405-2145" />
+  </head>
+  <body>
+    <div class="page-shell compact">
+      <aside class="hero-panel compact">
+        <div class="hero-badge">Rebuild</div>
+        <h1>掌上考勤</h1>
+        <p class="hero-subtitle">
+          当前页面只保留登录、xlsx 导入、多账号状态和正常打卡轮询，方便围绕功能入口 1 做集中分析。
+        </p>
+        <div class="hero-stats compact">
+          <div class="stat-card">
+            <span class="stat-label">主入口</span>
+            <span class="stat-value">正常打卡</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">导入格式</span>
+            <span class="stat-value">xlsx 首表</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">轮询模式</span>
+            <span class="stat-value">仅调测 / 真实提交可切换</span>
+          </div>
+        </div>
+        <div class="hero-note">
+          <span>本地代理</span>
+          <code id="config-api">加载中...</code>
+        </div>
+      </aside>
+
+      <main class="content-panel">
+        <section class="card session-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Session</p>
+              <h2>当前会话</h2>
+            </div>
+            <button id="btn-refresh-session" class="ghost-button" type="button">刷新会话</button>
+          </div>
+          <div id="session-banner" class="session-banner neutral">正在检查本地缓存...</div>
+          <div id="session-summary" class="session-summary"></div>
+          <form id="login-form" class="login-form compact">
+            <div class="field-grid">
+              <label class="field">
+                <span>账号</span>
+                <input id="userAccount" name="userAccount" autocomplete="username" placeholder="请输入账号" />
+              </label>
+              <label class="field">
+                <span>密码</span>
+                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" />
+              </label>
+            </div>
+            <div class="captcha-row">
+              <label class="field captcha-field">
+                <span>验证码</span>
+                <input id="verificationCode" name="verificationCode" autocomplete="off" placeholder="请输入验证码" />
+              </label>
+              <button id="btn-captcha" class="captcha-button" type="button" title="点击刷新验证码">
+                <img id="captcha-image" alt="验证码" />
+              </button>
+            </div>
+            <div class="policy-row">
+              <input id="agreePolicy" type="checkbox" />
+              <label for="agreePolicy">查看并同意《隐私政策》</label>
+            </div>
+            <div class="button-row">
+              <button id="btn-login" class="primary-button" type="submit">登录</button>
+              <button id="btn-force-captcha" class="ghost-button" type="button">刷新验证码</button>
+              <button id="btn-reuse" class="secondary-button" type="button">优先复用 token</button>
+              <button id="btn-logout" class="ghost-button danger" type="button">清理会话</button>
+            </div>
+          </form>
+          <div id="login-tip" class="hint-text">
+            当前会优先复用本地 token。多账号列表里没有 token 或 token 已过期的账号，可以直接点“获取 token”弹出验证码操作层。
+          </div>
+        </section>
+
+        <section class="card import-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Import</p>
+              <h2>导入 xlsx</h2>
+            </div>
+            <button id="btn-refresh-accounts" class="ghost-button" type="button">刷新账号状态</button>
+          </div>
+          <div class="field">
+            <span>选择首表包含账号信息的 xlsx</span>
+            <input id="accounts-file" type="file" accept=".xlsx" />
+          </div>
+          <div class="button-row">
+            <button id="btn-import-accounts" class="primary-button" type="button">导入账号表</button>
+          </div>
+          <div id="import-banner" class="session-banner neutral">还没有导入表格。</div>
+          <div id="import-file-summary" class="summary-grid"></div>
+          <div id="import-result-summary" class="summary-grid"></div>
+          <div id="import-warning-list" class="detail-line-list"></div>
+          <div class="hint-text">
+            支持列名：`账号 / 用户名 / userAccount`、`密码 / password`、`姓名`、`部门`、`启用`、`备注`。
+          </div>
+        </section>
+
+        <section class="card accounts-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Accounts</p>
+              <h2>多账号状态</h2>
+            </div>
+            <div class="card-head-actions">
+              <button id="btn-toggle-account-list" class="ghost-button hidden" type="button">查看账号列表</button>
+              <button id="btn-clear-account-tokens" class="ghost-button danger" type="button">清空全部 token</button>
+            </div>
+          </div>
+          <div id="accounts-summary" class="summary-grid"></div>
+          <div id="accounts-list-banner" class="session-banner neutral hidden"></div>
+          <div id="accounts-table" class="accounts-table"></div>
+        </section>
+
+        <section class="card polling-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Polling</p>
+              <h2>打卡轮询</h2>
+            </div>
+            <button id="btn-refresh-polling" class="ghost-button" type="button">刷新轮询状态</button>
+          </div>
+          <div id="polling-banner" class="session-banner neutral">正在读取轮询状态...</div>
+          <div id="polling-summary" class="session-summary"></div>
+          <div class="button-row">
+            <button id="btn-start-polling" class="primary-button" type="button">开启轮询</button>
+            <button id="btn-toggle-weekend-polling" class="ghost-button" type="button">周末轮询：关闭</button>
+            <button id="btn-run-polling-test" class="secondary-button" type="button">立即测试一次</button>
+            <button id="btn-stop-polling" class="ghost-button danger" type="button">关闭轮询</button>
+          </div>
+          <div class="polling-settings">
+            <div class="detail-block-title">轮询执行模式</div>
+            <div class="mode-toggle polling-mode-toggle">
+              <label class="mode-card">
+                <input id="polling-execution-mode-dry-run" type="radio" name="polling-execution-mode" value="dry-run" checked />
+                <span class="mode-card-title">仅调测</span>
+                <span class="mode-card-desc">到点只跑流程校验，不提交真实打卡。</span>
+              </label>
+              <label class="mode-card">
+                <input id="polling-execution-mode-submit" type="radio" name="polling-execution-mode" value="submit" />
+                <span class="mode-card-title">真实提交</span>
+                <span class="mode-card-desc">到点会使用账号表中的照片直接提交生产打卡。</span>
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="btn-save-polling-mode" class="ghost-button" type="button">保存轮询模式</button>
+            </div>
+            <div class="field-grid polling-time-grid">
+              <label class="field">
+                <span>打卡时点 1</span>
+                <input id="polling-time-1" type="time" step="60" />
+              </label>
+              <label class="field">
+                <span>打卡时点 2</span>
+                <input id="polling-time-2" type="time" step="60" />
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="btn-save-polling-times" class="ghost-button" type="button">保存打卡时间</button>
+            </div>
+          </div>
+          <div class="polling-layout">
+            <section class="polling-panel">
+              <div class="detail-block-title">当前 / 最近一次</div>
+              <div id="polling-current" class="detail-line-list"></div>
+            </section>
+            <section class="polling-panel">
+              <div class="detail-block-title">最近 5 次执行</div>
+              <div id="polling-history" class="detail-line-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="card notify-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">WeCom</p>
+              <h2>企业微信通知</h2>
+            </div>
+            <button id="btn-refresh-notify" class="ghost-button" type="button">刷新通知配置</button>
+          </div>
+          <div id="notify-banner" class="session-banner neutral">正在读取企业微信群通知配置...</div>
+          <div id="notify-summary" class="summary-grid"></div>
+          <label class="field">
+            <span>群机器人 Webhook URL</span>
+            <input
+              id="notify-webhook-url"
+              type="url"
+              autocomplete="off"
+              placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
+            />
+          </label>
+          <div class="notify-option-grid">
+            <label class="notify-option">
+              <input id="notify-enabled" type="checkbox" />
+              <span>启用企业微信群通知</span>
+            </label>
+            <label class="notify-option">
+              <input id="notify-on-submit" type="checkbox" />
+              <span>真实打卡后发送结果</span>
+            </label>
+            <label class="notify-option">
+              <input id="notify-on-polling" type="checkbox" />
+              <span>轮询完成后发送汇总</span>
+            </label>
+            <label class="notify-option">
+              <input id="notify-mention-all-on-failure" type="checkbox" />
+              <span>失败时 @all</span>
+            </label>
+          </div>
+          <div id="notify-details" class="detail-line-list"></div>
+          <div class="button-row">
+            <button id="btn-save-notify" class="primary-button" type="button">保存通知配置</button>
+            <button id="btn-test-notify" class="secondary-button" type="button">发送测试消息</button>
+          </div>
+          <div class="hint-text">
+            推荐先在企业微信群里创建“消息推送（原群机器人）”，把生成的 webhook 地址粘到这里。留空保存不会覆盖已存地址。
+          </div>
+        </section>
+
+        <section class="card data-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Inspect</p>
+              <h2>返回数据</h2>
+            </div>
+          </div>
+          <pre id="output" class="output-panel">等待接口返回...</pre>
+        </section>
+      </main>
+    </div>
+
+    <div id="account-auth-modal" class="modal-shell hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-account-auth"></div>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="account-auth-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Token</p>
+            <h2 id="account-auth-title">获取账号 token</h2>
+          </div>
+          <button id="btn-account-auth-close" class="ghost-button" type="button">关闭</button>
+        </div>
+        <div id="account-auth-banner" class="session-banner neutral">正在准备验证码...</div>
+        <div id="account-auth-summary" class="session-summary"></div>
+        <div class="field-grid">
+          <label class="field">
+            <span>账号</span>
+            <input id="account-auth-user-account" type="text" readonly />
+          </label>
+          <label class="field">
+            <span>密码</span>
+            <input id="account-auth-password" type="password" autocomplete="current-password" placeholder="默认使用导入密码，可留空" />
+          </label>
+        </div>
+        <div class="captcha-row modal-captcha-row">
+          <label class="field captcha-field">
+            <span>验证码</span>
+            <input id="account-auth-code" autocomplete="off" placeholder="请输入验证码" />
+          </label>
+          <button id="btn-account-auth-captcha" class="captcha-button" type="button" title="点击刷新验证码">
+            <img id="account-auth-captcha-image" alt="账号验证码" />
+          </button>
+        </div>
+        <div class="hint-text" id="account-auth-tip">
+          默认复用导入表中的密码；如果密码刚刚改过，可以在这里手动覆盖并刷新该账号 token。
+        </div>
+        <div class="button-row">
+          <button id="btn-account-auth-submit" class="primary-button" type="button">获取 token</button>
+          <button id="btn-account-auth-refresh" class="ghost-button" type="button">刷新验证码</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="polling-run-modal" class="modal-shell hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-polling-run"></div>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="polling-run-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Run</p>
+            <h2 id="polling-run-title">选择执行方式</h2>
+          </div>
+          <button id="btn-polling-run-close" class="ghost-button" type="button">关闭</button>
+        </div>
+        <div id="polling-run-banner" class="session-banner neutral">请选择本次执行方式。</div>
+        <div class="mode-toggle">
+          <label class="mode-card">
+            <input id="polling-run-mode-flow" type="radio" name="polling-run-mode" value="flow" checked />
+            <span class="mode-card-title">流程调测</span>
+            <span class="mode-card-desc">批量 dry-run，不提交真实打卡。</span>
+          </label>
+          <label class="mode-card">
+            <input id="polling-run-mode-submit" type="radio" name="polling-run-mode" value="submit" />
+            <span class="mode-card-title">真实打卡</span>
+            <span class="mode-card-desc">单账号 + 单张照片，实际提交打卡接口。</span>
+          </label>
+        </div>
+        <div id="polling-run-submit-fields" class="run-submit-fields hidden">
+          <div class="field-grid">
+            <label class="field">
+              <span>选择用户</span>
+              <select id="polling-run-account"></select>
+            </label>
+          </div>
+          <div id="polling-run-photo-status" class="detail-line-list"></div>
+          <div class="hint-text">
+            仅显示当前已有可复用 token 的账号；切换账号后会同步刷新照片状态和提交目标。
+          </div>
+        </div>
+        <div id="polling-run-result" class="detail-line-list hidden"></div>
+        <div class="button-row">
+          <button id="btn-polling-run-confirm" class="primary-button" type="button">开始执行</button>
+          <button id="btn-polling-run-cancel" class="ghost-button" type="button">取消</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="clear-tokens-modal" class="modal-shell hidden" aria-hidden="true">
+      <div class="modal-backdrop" data-action="close-clear-tokens"></div>
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="clear-tokens-title">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Danger</p>
+            <h2 id="clear-tokens-title">确认清空全部 token</h2>
+          </div>
+          <button id="btn-clear-tokens-close" class="ghost-button" type="button">关闭</button>
+        </div>
+        <div id="clear-tokens-banner" class="session-banner warning">这个操作会清空所有账号的本地 token 缓存，并同时清掉当前主会话。</div>
+        <div id="clear-tokens-summary" class="detail-line-list">
+          <div class="detail-line detail-line-danger">
+            <strong>影响范围</strong><br />
+            <span>所有已导入账号都会变成“无 token”状态，后续需要重新获取 token。</span>
+          </div>
+        </div>
+        <div class="button-row">
+          <button id="btn-clear-tokens-confirm" class="primary-button" type="button">再次确认并清空</button>
+          <button id="btn-clear-tokens-cancel" class="ghost-button" type="button">取消</button>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="/app.js?v=20260405-2145"></script>
+  </body>
+</html>

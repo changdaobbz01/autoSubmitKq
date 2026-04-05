@@ -1,0 +1,13 @@
+.attendance_auth/
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+*.log
+emulator_screen*.png
+phone_screen*.png
+tdx_window*.png
+tmp_*.js
+ui*.xml
+window_dump.xml
