@@ -9,5 +9,7 @@ emulator_screen*.png
 phone_screen*.png
 tdx_window*.png
 tmp_*.js
+ad_app*.js
+ad_chunk-vendors*.js
 ui*.xml
 window_dump.xml
