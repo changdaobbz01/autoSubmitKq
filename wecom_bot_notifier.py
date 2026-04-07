@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
+from network_utils import direct_urlopen
 from runtime_paths import APP_ROOT
 
 PROJECT_DIR = APP_ROOT
@@ -173,7 +174,7 @@ class WeComBotNotifier:
         )
 
         try:
-            with urllib.request.urlopen(request, timeout=10) as response:
+            with direct_urlopen(request, timeout=10) as response:
                 raw = response.read().decode("utf-8")
             body = json.loads(raw or "{}")
             errcode = int(body.get("errcode", -1))

@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from network_utils import direct_urlopen
 from runtime_paths import APP_ROOT
 
 BASE_PAGE_URL = "https://ad-pro.xyang.xin:20002/ad/#/login?redirectTo=%2Fhome"
@@ -373,7 +374,7 @@ class AttendanceAuthClient:
 
         request = urllib.request.Request(url=url, data=data, headers=request_headers, method=method.upper())
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with direct_urlopen(request, timeout=self.timeout_seconds) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
                 raw = response.read().decode(charset, errors="ignore")
         except urllib.error.HTTPError as exc:
