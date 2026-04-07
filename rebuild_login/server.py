@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import re
 import sys
 import threading
@@ -51,6 +52,9 @@ DEFAULT_POLLING_SLOTS = [
 ]
 DEFAULT_POLLING_EXECUTION_MODE = "dry-run"
 POLLING_EXECUTION_MODE_VALUES = {DEFAULT_POLLING_EXECUTION_MODE, "submit"}
+DEFAULT_RANDOM_DELAY_ENABLED = False
+RANDOM_DELAY_MIN_MINUTES = 1
+RANDOM_DELAY_MAX_MINUTES = 5
 LEGACY_POLLING_SLOT_LABELS = {
     "weekday-morning": "工作日上午 08:00 dry-run",
     "weekday-evening": "工作日下午 18:30 dry-run",
@@ -249,6 +253,153 @@ def build_polling_slot_label(
     return f"{slot['name']} {slot['hour']:02d}:{slot['minute']:02d} {mode_suffix}"
 
 
+def build_random_delay_label(enabled: bool) -> str:
+    return "\u5f00\u542f\uff08+1~5\u5206\u949f\uff09" if enabled else "\u5173\u95ed"
+
+
+def build_polling_runtime_slot_label(
+    slot: dict[str, Any],
+    execution_mode: str = DEFAULT_POLLING_EXECUTION_MODE,
+) -> str:
+    offset_minutes = int(slot.get("offsetMinutes") or 0)
+    latest_offset_minutes = int(slot.get("latestOffsetMinutes") or offset_minutes)
+    if latest_offset_minutes > offset_minutes > 0:
+        mode_suffix = "真实提交" if normalize_polling_execution_mode(execution_mode) == "submit" else "dry-run"
+        return f"{slot['name']} {slot['hour']:02d}:{slot['minute']:02d} +{offset_minutes}~{latest_offset_minutes}分钟 {mode_suffix}"
+    if offset_minutes > 0:
+        mode_suffix = "真实提交" if normalize_polling_execution_mode(execution_mode) == "submit" else "dry-run"
+        return f"{slot['name']} {slot['hour']:02d}:{slot['minute']:02d} +{offset_minutes}分钟 {mode_suffix}"
+    return build_polling_slot_label(slot, execution_mode)
+
+
+def _build_valid_random_offsets(candidate: datetime, baseline: datetime) -> list[int]:
+    return [
+        offset
+        for offset in range(RANDOM_DELAY_MIN_MINUTES, RANDOM_DELAY_MAX_MINUTES + 1)
+        if candidate + timedelta(minutes=offset) > baseline
+    ]
+
+
+def _sanitize_polling_accounts(accounts: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    sanitized: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in accounts or []:
+        if not isinstance(item, dict):
+            continue
+        user_account = str(item.get("userAccount") or "").strip()
+        if not user_account or user_account in seen:
+            continue
+        seen.add(user_account)
+        sanitized.append(
+            {
+                "userAccount": user_account,
+                "realName": str(item.get("realName") or "").strip(),
+            }
+        )
+    return sanitized
+
+
+def _build_account_delay_plans(
+    *,
+    candidate: datetime,
+    baseline: datetime,
+    apply_random_delay: bool,
+    accounts: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    if not accounts:
+        return []
+
+    if apply_random_delay:
+        valid_offsets = _build_valid_random_offsets(candidate, baseline)
+        if not valid_offsets:
+            return []
+        available_offsets = list(valid_offsets)
+        random.shuffle(available_offsets)
+    else:
+        valid_offsets = [0]
+        available_offsets = [0]
+
+    plans: list[dict[str, Any]] = []
+    for index, account in enumerate(accounts):
+        if available_offsets:
+            offset_minutes = available_offsets.pop(0)
+        else:
+            offset_minutes = random.choice(valid_offsets)
+        scheduled_at = candidate + timedelta(minutes=offset_minutes)
+        plans.append(
+            {
+                "userAccount": account["userAccount"],
+                "realName": account["realName"],
+                "offsetMinutes": offset_minutes,
+                "scheduledAt": int(scheduled_at.timestamp()),
+                "scheduledAtText": format_timestamp(int(scheduled_at.timestamp())),
+                "scheduledTime": f"{scheduled_at.hour:02d}:{scheduled_at.minute:02d}",
+                "sequence": index + 1,
+            }
+        )
+    plans.sort(key=lambda item: (int(item["scheduledAt"]), str(item["userAccount"])))
+    return plans
+
+
+def _build_scheduled_slot_payload(
+    slot: dict[str, Any],
+    *,
+    candidate: datetime,
+    execution_mode: str,
+    apply_random_delay: bool,
+    now: datetime | None = None,
+    accounts: list[dict[str, Any]] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    slot_payload = dict(slot)
+    slot_payload["baseTime"] = f"{slot['hour']:02d}:{slot['minute']:02d}"
+    baseline = now or datetime.min
+    valid_offsets = _build_valid_random_offsets(candidate, baseline) if apply_random_delay else [0]
+    window_offset_minutes = max(valid_offsets) if valid_offsets else 0
+    window_ends_at = candidate + timedelta(minutes=window_offset_minutes)
+    account_plans = _build_account_delay_plans(
+        candidate=candidate,
+        baseline=baseline,
+        apply_random_delay=apply_random_delay,
+        accounts=_sanitize_polling_accounts(accounts),
+    )
+    if account_plans:
+        first_plan = account_plans[0]
+        last_plan = account_plans[-1]
+        slot_payload["accountPlans"] = account_plans
+        slot_payload["accountPlanCount"] = len(account_plans)
+        slot_payload["scheduledTime"] = first_plan["scheduledTime"]
+        slot_payload["offsetMinutes"] = int(first_plan["offsetMinutes"])
+        slot_payload["scheduledAt"] = int(first_plan["scheduledAt"])
+        slot_payload["scheduledAtText"] = first_plan["scheduledAtText"]
+        slot_payload["latestScheduledTime"] = last_plan["scheduledTime"]
+        slot_payload["latestOffsetMinutes"] = int(last_plan["offsetMinutes"])
+        slot_payload["latestScheduledAt"] = int(last_plan["scheduledAt"])
+        slot_payload["latestScheduledAtText"] = last_plan["scheduledAtText"]
+        slot_payload["windowEndsAt"] = int(window_ends_at.timestamp())
+        slot_payload["windowEndsAtText"] = format_timestamp(slot_payload["windowEndsAt"])
+        slot_payload["accountScheduleText"] = " / ".join(
+            f"{item['userAccount']} {item['scheduledTime']}" for item in account_plans[:5]
+        )
+    else:
+        if apply_random_delay:
+            offset_minutes = random.choice(valid_offsets) if valid_offsets else 0
+        else:
+            offset_minutes = 0
+        scheduled_candidate = candidate + timedelta(minutes=offset_minutes)
+        slot_payload["scheduledTime"] = f"{scheduled_candidate.hour:02d}:{scheduled_candidate.minute:02d}"
+        slot_payload["offsetMinutes"] = offset_minutes
+        slot_payload["scheduledAt"] = int(scheduled_candidate.timestamp())
+        slot_payload["scheduledAtText"] = format_timestamp(slot_payload["scheduledAt"])
+        slot_payload["latestScheduledTime"] = slot_payload["scheduledTime"]
+        slot_payload["latestOffsetMinutes"] = offset_minutes
+        slot_payload["latestScheduledAt"] = slot_payload["scheduledAt"]
+        slot_payload["latestScheduledAtText"] = slot_payload["scheduledAtText"]
+        slot_payload["windowEndsAt"] = int(window_ends_at.timestamp())
+        slot_payload["windowEndsAtText"] = format_timestamp(slot_payload["windowEndsAt"])
+    slot_payload["label"] = build_polling_runtime_slot_label(slot_payload, execution_mode)
+    return int(slot_payload["scheduledAt"]), slot_payload
+
+
 def _clone_default_polling_slots() -> list[dict[str, Any]]:
     return [dict(slot) for slot in DEFAULT_POLLING_SLOTS]
 
@@ -315,6 +466,8 @@ def compute_next_polling_slot(
     allow_weekends: bool = False,
     slots: list[dict[str, Any]] | None = None,
     execution_mode: str = DEFAULT_POLLING_EXECUTION_MODE,
+    apply_random_delay: bool = False,
+    accounts: list[dict[str, Any]] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     now = now or datetime.now()
     slots = normalize_polling_slots(slots)
@@ -325,18 +478,30 @@ def compute_next_polling_slot(
             continue
         for slot in slots:
             candidate = datetime.combine(day, dt_time(slot["hour"], slot["minute"]))
-            if candidate > now:
-                slot_payload = dict(slot)
-                slot_payload["label"] = build_polling_slot_label(slot_payload, execution_mode)
-                return int(candidate.timestamp()), slot_payload
+            scheduled_run_at, slot_payload = _build_scheduled_slot_payload(
+                slot,
+                candidate=candidate,
+                execution_mode=execution_mode,
+                apply_random_delay=apply_random_delay,
+                now=now,
+                accounts=accounts,
+            )
+            if datetime.fromtimestamp(scheduled_run_at) > now:
+                return scheduled_run_at, slot_payload
 
     fallback_slot = dict(slots[0])
     fallback_day = now.date() + timedelta(days=1)
     while not allow_weekends and datetime.combine(fallback_day, dt_time(0, 0)).weekday() > 4:
         fallback_day += timedelta(days=1)
     fallback = datetime.combine(fallback_day, dt_time(fallback_slot["hour"], fallback_slot["minute"]))
-    fallback_slot["label"] = build_polling_slot_label(fallback_slot, execution_mode)
-    return int(fallback.timestamp()), fallback_slot
+    return _build_scheduled_slot_payload(
+        fallback_slot,
+        candidate=fallback,
+        execution_mode=execution_mode,
+        apply_random_delay=apply_random_delay,
+        now=now,
+        accounts=accounts,
+    )
 
 
 def build_scheduler_session_payload(session: SessionData | None) -> dict[str, Any]:
@@ -496,6 +661,7 @@ class ClockDryRunScheduler:
         self._allow_weekends = bool(saved.get("allowWeekends", False))
         self._slots = normalize_polling_slots(saved.get("slots"))
         self._execution_mode = normalize_polling_execution_mode(saved.get("executionMode"))
+        self._random_delay_enabled = bool(saved.get("randomDelayEnabled", DEFAULT_RANDOM_DELAY_ENABLED))
         raw_last_run = saved.get("lastRun") if isinstance(saved.get("lastRun"), dict) else None
         self._last_run = normalize_persisted_run_record(raw_last_run) if raw_last_run else None
         raw_recent = saved.get("recentRuns")
@@ -506,15 +672,35 @@ class ClockDryRunScheduler:
         self._active_run: dict[str, Any] | None = None
         self._next_run_at: int | None = None
         self._next_slot: dict[str, Any] | None = None
+        raw_saved_next_run_at = saved.get("nextRunAt")
+        saved_next_run_at = int(raw_saved_next_run_at) if isinstance(raw_saved_next_run_at, (int, float)) else None
+        raw_saved_next_slot = saved.get("nextSlot") if isinstance(saved.get("nextSlot"), dict) else None
+        enabled_accounts = self.account_registry.get_enabled_accounts(include_sensitive=False) if self._enabled else []
 
         if self._enabled:
-            self._set_next_run_locked()
+            if saved_next_run_at and saved_next_run_at > int(time.time()) and raw_saved_next_slot:
+                saved_account_plans = [
+                    dict(item)
+                    for item in raw_saved_next_slot.get("accountPlans", [])
+                    if isinstance(item, dict)
+                ]
+                if self._random_delay_enabled and enabled_accounts and not saved_account_plans:
+                    self._set_next_run_locked()
+                else:
+                    self._next_run_at = saved_next_run_at
+                    self._next_slot = dict(raw_saved_next_slot)
+                    self._next_slot["label"] = build_polling_runtime_slot_label(self._next_slot, self._execution_mode)
+            else:
+                self._set_next_run_locked()
 
         if (
             self._last_run != raw_last_run
             or self._recent_runs != saved_recent_runs
             or saved.get("slots") != self._slots
             or saved.get("executionMode") != self._execution_mode
+            or bool(saved.get("randomDelayEnabled", DEFAULT_RANDOM_DELAY_ENABLED)) != self._random_delay_enabled
+            or saved_next_run_at != self._next_run_at
+            or raw_saved_next_slot != self._next_slot
         ):
             self._persist_locked()
 
@@ -551,7 +737,7 @@ class ClockDryRunScheduler:
         self._wake_event.set()
         return self.get_status_payload()
 
-    def set_time_slots(self, raw_slots: list[Any]) -> dict[str, Any]:
+    def set_time_slots(self, raw_slots: list[Any], random_delay_enabled: bool | None = None) -> dict[str, Any]:
         if len(raw_slots) != 2:
             raise ValueError("请输入两个有效的打卡时间，格式为 HH:MM。")
         parsed_times: list[tuple[int, int]] = []
@@ -567,6 +753,17 @@ class ClockDryRunScheduler:
             raise ValueError("请输入两个有效的打卡时间，格式为 HH:MM。")
         with self._lock:
             self._slots = slots
+            if random_delay_enabled is not None:
+                self._random_delay_enabled = bool(random_delay_enabled)
+            if self._enabled:
+                self._set_next_run_locked()
+            self._persist_locked()
+        self._wake_event.set()
+        return self.get_status_payload()
+
+    def set_random_delay_enabled(self, enabled: bool) -> dict[str, Any]:
+        with self._lock:
+            self._random_delay_enabled = bool(enabled)
             if self._enabled:
                 self._set_next_run_locked()
             self._persist_locked()
@@ -609,24 +806,30 @@ class ClockDryRunScheduler:
             allow_weekends = self._allow_weekends
             slots = [dict(slot) for slot in self._slots]
             execution_mode = self._execution_mode
-            preview_run_at, preview_slot = compute_next_polling_slot(
-                allow_weekends=allow_weekends,
-                slots=slots,
-                execution_mode=execution_mode,
-            )
-            next_run_at = self._next_run_at if self._enabled else preview_run_at
-            next_slot = self._next_slot if self._enabled and self._next_slot else preview_slot
+            random_delay_enabled = self._random_delay_enabled
             active_run = dict(self._active_run) if self._active_run else None
             last_run = dict(self._last_run) if self._last_run else None
             recent_runs = [dict(item) for item in self._recent_runs[:5]]
             enabled = self._enabled
 
         registry_summary = self.account_registry.summarize_registry()
+        enabled_accounts = [item for item in registry_summary["accounts"] if item.get("enabled")]
+        preview_run_at, preview_slot = compute_next_polling_slot(
+            allow_weekends=allow_weekends,
+            slots=slots,
+            execution_mode=execution_mode,
+            apply_random_delay=random_delay_enabled,
+            accounts=enabled_accounts,
+        )
+        next_run_at = self._next_run_at if enabled else preview_run_at
+        next_slot = self._next_slot if enabled and self._next_slot else preview_slot
         return {
             "enabled": enabled,
             "allowWeekends": allow_weekends,
             "executionMode": execution_mode,
             "executionModeLabel": build_polling_execution_mode_label(execution_mode),
+            "randomDelayEnabled": random_delay_enabled,
+            "randomDelayLabel": build_random_delay_label(random_delay_enabled),
             "running": active_run is not None,
             "scheduleText": build_polling_schedule_text(allow_weekends, slots),
             "slots": [
@@ -643,6 +846,13 @@ class ClockDryRunScheduler:
             "nextRunAt": next_run_at,
             "nextRunAtText": format_timestamp(next_run_at),
             "nextRunLabel": next_slot["label"] if next_slot else "",
+            "nextRunBaseTime": next_slot.get("baseTime") if next_slot else "",
+            "nextRunScheduledTime": next_slot.get("scheduledTime") if next_slot else "",
+            "nextRunLatestScheduledTime": next_slot.get("latestScheduledTime") if next_slot else "",
+            "nextRunOffsetMinutes": int(next_slot.get("offsetMinutes") or 0) if next_slot else 0,
+            "nextRunLatestOffsetMinutes": int(next_slot.get("latestOffsetMinutes") or 0) if next_slot else 0,
+            "nextRunAccountPlanCount": int(next_slot.get("accountPlanCount") or 0) if next_slot else 0,
+            "nextRunAccountScheduleText": next_slot.get("accountScheduleText") if next_slot else "",
             "activeRun": active_run,
             "lastRun": last_run,
             "recentRuns": recent_runs,
@@ -680,6 +890,7 @@ class ClockDryRunScheduler:
                                 self._next_slot["label"],
                                 trigger="schedule",
                                 execution_mode=self._execution_mode,
+                                slot_payload=self._next_slot,
                             )
                         )
 
@@ -697,10 +908,11 @@ class ClockDryRunScheduler:
         *,
         trigger: str,
         execution_mode: str = DEFAULT_POLLING_EXECUTION_MODE,
+        slot_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         started_at = int(time.time())
         normalized_mode = normalize_polling_execution_mode(execution_mode)
-        return {
+        payload = {
             "slotKey": slot_key,
             "slotLabel": slot_label,
             "trigger": trigger,
@@ -709,6 +921,17 @@ class ClockDryRunScheduler:
             "startedAt": started_at,
             "startedAtText": format_timestamp(started_at),
         }
+        if slot_payload:
+            payload["slot"] = dict(slot_payload)
+            payload["slotKey"] = str(slot_payload.get("key") or slot_key)
+            payload["slotLabel"] = str(slot_payload.get("label") or slot_label)
+            payload["scheduledAt"] = int(slot_payload.get("scheduledAt") or started_at)
+            payload["accountPlans"] = [
+                dict(item)
+                for item in slot_payload.get("accountPlans", [])
+                if isinstance(item, dict)
+            ]
+        return payload
 
     def _activate_run_locked(self, due_run: dict[str, Any]) -> threading.Thread:
         self._active_run = dict(due_run)
@@ -732,12 +955,63 @@ class ClockDryRunScheduler:
         skipped_expired_count = 0
         skipped_missing_count = 0
         skipped_photo_count = 0
+        scheduled_account_plans = [
+            dict(item)
+            for item in due_run.get("accountPlans", [])
+            if isinstance(item, dict) and str(item.get("userAccount") or "").strip()
+        ]
+        scheduled_account_plans.sort(key=lambda item: (int(item.get("scheduledAt") or 0), str(item.get("userAccount") or "")))
+        execution_items: list[tuple[dict[str, Any] | None, dict[str, Any] | None]]
+        if scheduled_account_plans:
+            execution_items = [(None, plan) for plan in scheduled_account_plans]
+        else:
+            execution_items = [
+                (account, None) for account in self.account_registry.get_enabled_accounts(include_sensitive=True)
+            ]
 
-        for account in self.account_registry.get_enabled_accounts(include_sensitive=True):
+        for account, account_plan in execution_items:
+            if account_plan is not None:
+                scheduled_at = int(account_plan.get("scheduledAt") or 0)
+                wait_seconds = scheduled_at - int(time.time())
+                if wait_seconds > 0:
+                    self._stop_event.wait(wait_seconds)
+                user_account = str(account_plan.get("userAccount") or "").strip()
+                try:
+                    account = self.account_registry.get_account(user_account, include_sensitive=True)
+                except ValueError:
+                    skipped_count += 1
+                    account_run = {
+                        "userAccount": user_account,
+                        "realName": str(account_plan.get("realName") or ""),
+                        "ok": False,
+                        "skipped": True,
+                        "skipReason": "removed",
+                        "summary": "账号已不存在，已跳过本次轮询",
+                        "details": {"mode": execution_mode, "schedule": account_plan},
+                    }
+                    self.account_registry.update_last_run(user_account, account_run)
+                    account_runs.append(account_run)
+                    continue
+                if not account.get("enabled"):
+                    skipped_count += 1
+                    photo_state = account.get("photo") if isinstance(account.get("photo"), dict) else {}
+                    account_run = {
+                        "userAccount": user_account,
+                        "realName": account.get("realName") or "",
+                        "ok": False,
+                        "skipped": True,
+                        "skipReason": "disabled",
+                        "summary": "账号已停用，已跳过本次轮询",
+                        "details": {"mode": execution_mode, "photo": photo_state, "schedule": account_plan},
+                    }
+                    self.account_registry.update_last_run(user_account, account_run)
+                    account_runs.append(account_run)
+                    continue
             user_account = account["userAccount"]
             client = self.account_registry.build_auth_client(account)
             session_state = account.get("session") or {}
             photo_state = account.get("photo") if isinstance(account.get("photo"), dict) else {}
+            account_schedule = dict(account_plan) if account_plan else None
             try:
                 if not session_state.get("reusable"):
                     skipped_count += 1
@@ -756,7 +1030,7 @@ class ClockDryRunScheduler:
                         "skipped": True,
                         "skipReason": skip_reason,
                         "summary": summary,
-                        "details": {"mode": execution_mode, "photo": photo_state},
+                        "details": {"mode": execution_mode, "photo": photo_state, "schedule": account_schedule},
                     }
                 elif not photo_state.get("exists"):
                     skipped_count += 1
@@ -768,7 +1042,7 @@ class ClockDryRunScheduler:
                         "skipped": True,
                         "skipReason": "photo",
                         "summary": f'{photo_state.get("statusText") or "未配置照片"}，已跳过本次轮询',
-                        "details": {"mode": execution_mode, "photo": photo_state},
+                        "details": {"mode": execution_mode, "photo": photo_state, "schedule": account_schedule},
                     }
                 else:
                     submit_mode = execution_mode == "submit"
@@ -794,6 +1068,7 @@ class ClockDryRunScheduler:
                                 "submitResponse": result.get("submitResponse"),
                                 "productionWritePerformed": bool(result.get("productionWritePerformed")),
                                 "photo": photo_state,
+                                "schedule": account_schedule,
                             }
                         )
 
@@ -837,6 +1112,7 @@ class ClockDryRunScheduler:
                         account_details = shrink_clock_check_payload(result)
                         account_details["mode"] = execution_mode
                         account_details["photo"] = photo_state
+                        account_details["schedule"] = account_schedule
                         account_run = {
                             "userAccount": user_account,
                             "realName": account.get("realName") or "",
@@ -854,9 +1130,27 @@ class ClockDryRunScheduler:
                     "ok": False,
                     "skipped": False,
                     "summary": str(exc) or "dry-run 执行失败",
-                    "details": {"mode": execution_mode, "photo": photo_state},
+                    "details": {"mode": execution_mode, "photo": photo_state, "schedule": account_schedule},
                     "error": str(exc),
                 }
+            if self.notifier is not None and execution_mode != "submit":
+                try:
+                    notification_payload = self.notifier.notify_polling_account(
+                        slot_label=str(due_run.get("slotLabel") or ""),
+                        execution_mode_label=str(due_run.get("executionModeLabel") or ""),
+                        account_run=account_run,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    notification_payload = {
+                        "attempted": True,
+                        "sent": False,
+                        "purpose": "polling-account",
+                        "statusText": f"企业微信群通知发送失败：{exc}",
+                        "error": str(exc),
+                    }
+                account_details = account_run.get("details") if isinstance(account_run.get("details"), dict) else {}
+                if account_details:
+                    account_details["notification"] = notification_payload
             self.account_registry.update_last_run(user_account, account_run)
             account_runs.append(account_run)
 
@@ -914,7 +1208,12 @@ class ClockDryRunScheduler:
             self._recent_runs = [run_record, *self._recent_runs][:8]
             self._active_run = None
             if self._enabled:
-                self._set_next_run_locked(datetime.fromtimestamp(finished_at) + timedelta(seconds=1))
+                slot_state = due_run.get("slot") if isinstance(due_run.get("slot"), dict) else {}
+                resume_epoch = finished_at
+                window_ends_at = int(slot_state.get("windowEndsAt") or 0)
+                if window_ends_at > resume_epoch:
+                    resume_epoch = window_ends_at
+                self._set_next_run_locked(datetime.fromtimestamp(resume_epoch) + timedelta(seconds=1))
             else:
                 self._next_run_at = None
                 self._next_slot = None
@@ -923,11 +1222,14 @@ class ClockDryRunScheduler:
         self._wake_event.set()
 
     def _set_next_run_locked(self, now: datetime | None = None) -> None:
+        enabled_accounts = self.account_registry.get_enabled_accounts(include_sensitive=False)
         next_run_at, next_slot = compute_next_polling_slot(
             now,
             allow_weekends=self._allow_weekends,
             slots=self._slots,
             execution_mode=self._execution_mode,
+            apply_random_delay=self._random_delay_enabled,
+            accounts=enabled_accounts,
         )
         self._next_run_at = next_run_at
         self._next_slot = dict(next_slot)
@@ -945,7 +1247,10 @@ class ClockDryRunScheduler:
             "enabled": self._enabled,
             "allowWeekends": self._allow_weekends,
             "executionMode": self._execution_mode,
+            "randomDelayEnabled": self._random_delay_enabled,
             "slots": self._slots,
+            "nextRunAt": self._next_run_at,
+            "nextSlot": self._next_slot,
             "lastRun": self._last_run,
             "recentRuns": self._recent_runs,
         }
@@ -1322,11 +1627,18 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
     def _handle_post_clock_times(self) -> None:
         body = self._read_json()
         raw_times = body.get("times")
+        raw_random_delay = body.get("randomDelayEnabled") if "randomDelayEnabled" in body else None
+        if isinstance(raw_random_delay, str):
+            random_delay_enabled = raw_random_delay.strip().lower() in {"1", "true", "yes", "on"}
+        elif raw_random_delay is None:
+            random_delay_enabled = None
+        else:
+            random_delay_enabled = bool(raw_random_delay)
         if not isinstance(raw_times, list):
             self._write_json({"error": "times 必须是包含两个时间的数组。"}, status=HTTPStatus.BAD_REQUEST)
             return
         try:
-            payload = self.polling_scheduler.set_time_slots(raw_times)
+            payload = self.polling_scheduler.set_time_slots(raw_times, random_delay_enabled=random_delay_enabled)
         except ValueError as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return

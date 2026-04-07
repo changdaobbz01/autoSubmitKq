@@ -105,6 +105,45 @@ class WeComBotNotifier:
         self._record_status("lastDelivery", payload)
         return payload
 
+    def notify_polling_account(
+        self,
+        *,
+        slot_label: str,
+        execution_mode_label: str,
+        account_run: dict[str, Any],
+    ) -> dict[str, Any]:
+        details = account_run.get("details") if isinstance(account_run.get("details"), dict) else {}
+        schedule = details.get("schedule") if isinstance(details.get("schedule"), dict) else {}
+        scheduled_time = str(schedule.get("scheduledAtText") or schedule.get("scheduledTime") or "-")
+        user_account = str(account_run.get("userAccount") or "-")
+        real_name = str(account_run.get("realName") or "")
+        summary = str(account_run.get("summary") or "-")
+        skipped = bool(account_run.get("skipped"))
+        ok = bool(account_run.get("ok"))
+        if skipped:
+            result_text = "跳过"
+        elif ok:
+            result_text = "成功"
+        else:
+            result_text = "失败"
+
+        content = "\n".join(
+            [
+                "[掌上考勤] 轮询账号结果",
+                f"账号：{user_account}{f' / {real_name}' if real_name else ''}",
+                f"时段：{slot_label or '-'}",
+                f"模式：{execution_mode_label or '-'}",
+                f"计划时间：{scheduled_time}",
+                f"结果：{result_text}",
+                f"摘要：{summary}",
+            ]
+        )
+        return self._send_text(
+            purpose="polling-account",
+            content=content,
+            mention_all=self._load().get("mentionAllOnFailure", False) and (not ok and not skipped),
+        )
+
     def notify_polling_run(self, run_record: dict[str, Any]) -> dict[str, Any]:
         details = run_record.get("details") if isinstance(run_record.get("details"), dict) else {}
         failed_count = int(details.get("failedCount") or 0)
@@ -146,11 +185,11 @@ class WeComBotNotifier:
 
     def _send_text(self, *, purpose: str, content: str, mention_all: bool) -> dict[str, Any]:
         config = self._load()
-        if purpose in {"submit", "polling"} and not config.get("enabled"):
+        if purpose in {"submit", "polling", "polling-account"} and not config.get("enabled"):
             return self._skip_result(purpose, "企业微信群通知未启用。")
         if purpose == "submit" and not config.get("notifyOnSubmit"):
             return self._skip_result(purpose, "真实打卡通知未开启。")
-        if purpose == "polling" and not config.get("notifyOnPolling"):
+        if purpose in {"polling", "polling-account"} and not config.get("notifyOnPolling"):
             return self._skip_result(purpose, "轮询通知未开启。")
 
         webhook_url = str(config.get("webhookUrl") or "").strip()

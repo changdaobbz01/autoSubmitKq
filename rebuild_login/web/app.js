@@ -1,66 +1,1369 @@
-const s={requestId:"",config:null,session:null,accounts:null,polling:null,notify:null,timer:null,importMeta:null,importSummary:null,accountAuth:{open:false,account:null,requestId:""},run:{open:false,mode:"flow",selectedUserAccount:""},clearTokens:{open:false}};
-const e={configApi:document.querySelector("#config-api"),sessionBanner:document.querySelector("#session-banner"),sessionSummary:document.querySelector("#session-summary"),output:document.querySelector("#output"),loginForm:document.querySelector("#login-form"),userAccount:document.querySelector("#userAccount"),password:document.querySelector("#password"),verificationCode:document.querySelector("#verificationCode"),agreePolicy:document.querySelector("#agreePolicy"),captchaImage:document.querySelector("#captcha-image"),btnCaptcha:document.querySelector("#btn-captcha"),btnForceCaptcha:document.querySelector("#btn-force-captcha"),btnLogin:document.querySelector("#btn-login"),btnReuse:document.querySelector("#btn-reuse"),btnLogout:document.querySelector("#btn-logout"),btnRefreshSession:document.querySelector("#btn-refresh-session"),accountsFile:document.querySelector("#accounts-file"),btnImportAccounts:document.querySelector("#btn-import-accounts"),btnRefreshAccounts:document.querySelector("#btn-refresh-accounts"),btnClearAccountTokens:document.querySelector("#btn-clear-account-tokens"),importBanner:document.querySelector("#import-banner"),importFileSummary:document.querySelector("#import-file-summary"),importResultSummary:document.querySelector("#import-result-summary"),importWarningList:document.querySelector("#import-warning-list"),accountsSummary:document.querySelector("#accounts-summary"),accountsTable:document.querySelector("#accounts-table"),pollingBanner:document.querySelector("#polling-banner"),pollingSummary:document.querySelector("#polling-summary"),pollingCurrent:document.querySelector("#polling-current"),pollingHistory:document.querySelector("#polling-history"),pollingExecutionModeDryRun:document.querySelector("#polling-execution-mode-dry-run"),pollingExecutionModeSubmit:document.querySelector("#polling-execution-mode-submit"),pollingTimeOne:document.querySelector("#polling-time-1"),pollingTimeTwo:document.querySelector("#polling-time-2"),btnRefreshPolling:document.querySelector("#btn-refresh-polling"),btnStartPolling:document.querySelector("#btn-start-polling"),btnToggleWeekendPolling:document.querySelector("#btn-toggle-weekend-polling"),btnSavePollingMode:document.querySelector("#btn-save-polling-mode"),btnSavePollingTimes:document.querySelector("#btn-save-polling-times"),btnRunPollingTest:document.querySelector("#btn-run-polling-test"),btnStopPolling:document.querySelector("#btn-stop-polling"),notifyBanner:document.querySelector("#notify-banner"),notifySummary:document.querySelector("#notify-summary"),notifyDetails:document.querySelector("#notify-details"),notifyWebhookUrl:document.querySelector("#notify-webhook-url"),notifyEnabled:document.querySelector("#notify-enabled"),notifyOnSubmit:document.querySelector("#notify-on-submit"),notifyOnPolling:document.querySelector("#notify-on-polling"),notifyMentionAllOnFailure:document.querySelector("#notify-mention-all-on-failure"),btnRefreshNotify:document.querySelector("#btn-refresh-notify"),btnSaveNotify:document.querySelector("#btn-save-notify"),btnTestNotify:document.querySelector("#btn-test-notify"),accountAuthModal:document.querySelector("#account-auth-modal"),accountAuthBanner:document.querySelector("#account-auth-banner"),accountAuthSummary:document.querySelector("#account-auth-summary"),accountAuthUserAccount:document.querySelector("#account-auth-user-account"),accountAuthPassword:document.querySelector("#account-auth-password"),accountAuthCode:document.querySelector("#account-auth-code"),accountAuthCaptchaImage:document.querySelector("#account-auth-captcha-image"),btnAccountAuthCaptcha:document.querySelector("#btn-account-auth-captcha"),btnAccountAuthRefresh:document.querySelector("#btn-account-auth-refresh"),btnAccountAuthSubmit:document.querySelector("#btn-account-auth-submit"),btnAccountAuthClose:document.querySelector("#btn-account-auth-close"),pollingRunModal:document.querySelector("#polling-run-modal"),pollingRunBanner:document.querySelector("#polling-run-banner"),pollingRunModeFlow:document.querySelector("#polling-run-mode-flow"),pollingRunModeSubmit:document.querySelector("#polling-run-mode-submit"),pollingRunSubmitFields:document.querySelector("#polling-run-submit-fields"),pollingRunAccount:document.querySelector("#polling-run-account"),pollingRunPhotoStatus:document.querySelector("#polling-run-photo-status"),pollingRunResult:document.querySelector("#polling-run-result"),btnPollingRunConfirm:document.querySelector("#btn-polling-run-confirm"),btnPollingRunCancel:document.querySelector("#btn-polling-run-cancel"),btnPollingRunClose:document.querySelector("#btn-polling-run-close"),clearTokensModal:document.querySelector("#clear-tokens-modal"),clearTokensBanner:document.querySelector("#clear-tokens-banner"),clearTokensSummary:document.querySelector("#clear-tokens-summary"),btnClearTokensConfirm:document.querySelector("#btn-clear-tokens-confirm"),btnClearTokensCancel:document.querySelector("#btn-clear-tokens-cancel"),btnClearTokensClose:document.querySelector("#btn-clear-tokens-close")};
-const esc=v=>String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
-const card=(l,v)=>`<div class="summary-item"><span class="summary-label">${esc(l)}</span><span class="summary-value">${esc(v)}</span></div>`;
-const line=(t,c="")=>`<div class="detail-line ${c}">${t}</div>`;
-const dt=v=>v?new Date(v).toLocaleString("zh-CN",{hour12:false}):"-";
-const bytes=v=>{if(!Number.isFinite(v)||v<=0)return"0 B";const u=["B","KB","MB","GB"];let i=0,n=v;while(n>=1024&&i<u.length-1){n/=1024;i+=1}return`${n.toFixed(n>=100||i===0?0:1)} ${u[i]}`};
-const msg=err=>err instanceof Error?err.message:String(err??"未知错误");
-const out=d=>{if(e.output)e.output.textContent=typeof d==="string"?d:JSON.stringify(d,null,2)};
-const banner=(n,t,x)=>{if(!n)return;n.className=`session-banner ${t}`;n.textContent=x};
-const setLoading=(b,on,t="处理中...")=>{if(!b)return;const hasImg=!!b.querySelector("img");if(on){if(!hasImg){b.dataset.originalText=b.textContent;b.textContent=t}b.disabled=true;b.classList.add("is-loading");b.setAttribute("aria-busy","true");return}b.disabled=false;b.classList.remove("is-loading");b.removeAttribute("aria-busy");if(!hasImg&&b.dataset.originalText)b.textContent=b.dataset.originalText};
-const syncBody=()=>document.body.classList.toggle("modal-open",!!(s.accountAuth.open||s.run.open||s.clearTokens.open));
-const sleep=ms=>new Promise(r=>window.setTimeout(r,ms));
-const ACCOUNTS_COLLAPSE_THRESHOLD=1;
-let accountsListExpanded=true;
-let accountsListInitialized=false;
-const toggleAccountsListButton=()=>document.querySelector("#btn-toggle-account-list");
-const accountsListBanner=()=>document.querySelector("#accounts-list-banner");
-function syncAccountsListUI(registry){const button=toggleAccountsListButton(),bannerNode=accountsListBanner();const total=registry?.totalCount||0;if(!button||!bannerNode||!e.accountsTable)return;if(!total){accountsListInitialized=false;accountsListExpanded=true;button.classList.add("hidden");bannerNode.classList.add("hidden");e.accountsTable.classList.remove("hidden");return}if(!accountsListInitialized){accountsListExpanded=total<=ACCOUNTS_COLLAPSE_THRESHOLD;accountsListInitialized=true}const collapsed=!accountsListExpanded;button.classList.remove("hidden");button.textContent=collapsed?`查看账号列表 (${total})`:"收起账号列表";bannerNode.classList.toggle("hidden",!collapsed);bannerNode.textContent=collapsed?`账号较多，已默认收起列表。当前 ${total} 个账号，点击“查看账号列表”展开。`:"";e.accountsTable.classList.toggle("hidden",collapsed)}
-function toggleAccountsList(){accountsListExpanded=!accountsListExpanded;accountsListInitialized=true;syncAccountsListUI(s.accounts)}
-function renderSession(d){if(!d||!d.cached){e.sessionSummary.innerHTML=[card("状态","当前没有可复用 token"),card("提示","需要手动登录并填写验证码")].join("");return}e.sessionSummary.innerHTML=[card("账号",d.userAccount||"-"),card("姓名",d.realName||d.userName||"-"),card("部门",d.department||"-"),card("Token 到期",d.tokenExpText||"-")].join("")}
-function renderImport(){const m=s.importMeta,p=s.importSummary;e.importFileSummary.innerHTML=m?[card("文件名",m.name),card("文件大小",bytes(m.size)),card("最后修改",m.lastModifiedText),card("文件类型",m.type||".xlsx")].join(""):"";e.importResultSummary.innerHTML=p?[card("工作表",p.sheetInfo?.activeSheet||"-"),card("数据行",p.sourceRowCount||0),card("唯一账号",p.importedCount||0),card("新增 / 合并",`${p.createdCount||0} / ${p.mergedCount||0}`),card("密码更新",p.passwordChangedCount||0),card("照片路径更新",p.photoPathChangedCount||0),card("照片可用 / 异常",`${p.photoReadyCount||0} / ${p.photoProblemCount||0}`)].join(""):"";const rows=[];if(p?.sheetInfo?.headerRow?.length)rows.push(line(`<strong>表头</strong><br /><span>${esc(p.sheetInfo.headerRow.join(" / "))}</span>`));for(const w of p?.warnings||[])rows.push(line(esc(w),"detail-line-danger"));for(const d of p?.duplicateAccountsInFile||[])rows.push(line(`<strong>重复账号</strong><br /><span>${esc(d.userAccount)} 出现在第 ${esc((d.rows||[]).join("、"))} 行</span>`,"detail-line-danger"));for(const item of p?.photoIssues||[])rows.push(line(`<strong>照片异常</strong><br /><span>${esc(item.userAccount)} / ${esc(item.statusText||"照片不可用")} / ${esc(item.path||"-")}</span>`,"detail-line-danger"));for(const item of p?.mergedChangeDetails||[]){const changed=(item.changedFields||[]).map(f=>f==="password"?"密码":f==="photoPath"?"照片路径":f==="realName"?"姓名":f==="department"?"部门":f==="enabled"?"启用状态":f==="note"?"备注":f).join("、");rows.push(line(`<strong>账号更新</strong><br /><span>${esc(item.userAccount)} / ${esc(changed||"无字段变化")}</span>`))}if((p?.mergedAccounts||[]).length)rows.push(line(`<strong>合并更新</strong><br /><span>${esc(p.mergedAccounts.join("、"))}</span>`));e.importWarningList.innerHTML=rows.join("");if(!m&&!p)banner(e.importBanner,"neutral","还没有导入表格。");else if(p?.warnings?.length||p?.duplicateAccountCount||p?.photoProblemCount)banner(e.importBanner,"warning","导入完成，但检测到重复账号或照片路径异常，请确认提示信息。");else if(p)banner(e.importBanner,"success",`导入完成，共 ${p.importedCount||0} 个账号，新增 ${p.createdCount||0} 个。`);else banner(e.importBanner,"neutral","已选中文件，点击“导入账号表”开始解析。")}
-const stText=a=>a?.session?.reusable?`可复用 / ${a.session.tokenExpText||"无到期时间"}`:a?.session?.status==="expired"?`token 已过期 / ${a.session.tokenExpText||"需要重新登录"}`:"无 token";
-const stTone=a=>a?.session?.status==="reusable"?"success":a?.session?.status==="expired"?"warning":"muted";
-const photoStatusText=a=>a?.photo?.statusText||"未配置照片";
-const photoStatusTone=a=>a?.photo?.exists?"detail-line-success":"detail-line-danger";const notifyTone=n=>!n?"":n.sent?"detail-line-success":n.attempted?"detail-line-danger":"";const notifyText=n=>n?.statusText||"未触发";
-function renderAccounts(r){e.accountsSummary.innerHTML=[card("总账号数",r?.totalCount||0),card("已启用",r?.enabledCount||0),card("可复用 token",r?.reusableCount||0),card("待验证码登录",r?.needsCaptchaLoginCount||0),card("token 已过期",r?.expiredCount||0),card("无 token",r?.missingTokenCount||0),card("照片可用",r?.photoReadyCount||0),card("照片异常",r?.photoProblemCount||0)].join("");const list=r?.accounts||[];if(!list.length){e.accountsTable.innerHTML='<div class="empty-state">还没有导入账号表。</div>';return}e.accountsTable.innerHTML=list.map(a=>{const need=!a.session?.reusable;const helper=need?`${a.needsCaptchaLoginReason||"需要人工验证码登录"}，轮询时会自动跳过。`:"当前账号已有缓存 token，可直接参与轮询 dry-run。";return`<article class="account-row ${need?"clickable needs-token":""}" data-user-account="${esc(a.userAccount)}"><div class="account-main" data-action="${need?"open-login":"show-account"}"><div class="account-title-row"><strong>${esc(a.userAccount)}</strong><span class="state-pill ${a.enabled?"success":"muted"}">${a.enabled?"启用":"停用"}</span><span class="state-pill ${stTone(a)}">${esc(stText(a))}</span></div><div class="account-meta"><span>${esc(a.realName||"未命名")}</span><span>${esc(a.department||"未配置部门")}</span><span>密码：${esc(a.passwordMasked||"未提供")}</span></div><div class="account-status-line">${esc(helper)}</div><div class="account-status-line ${photoStatusTone(a)}">打卡照片：${esc(photoStatusText(a))}</div><div class="account-status-line subtle">${a.photoPath?`照片路径：${esc(a.photoPath)}`:"照片路径：未配置"}</div><div class="account-status-line subtle">${a.lastRun?.summary?`最近结果：${esc(a.lastRun.summary)}`:"最近结果：暂无"}</div></div><div class="account-actions">${need?'<button class="primary-button" type="button" data-action="open-login">获取 token</button>':'<button class="secondary-button" type="button" data-action="show-account">查看状态</button>'}<button class="ghost-button" type="button" data-action="toggle">${a.enabled?"停用":"启用"}</button><button class="ghost-button danger" type="button" data-action="remove">删除</button></div></article>`}).join("")}
-function renderPolling(p){s.polling=p;const o=p?.accountsOverview||{},slots=Array.isArray(p?.slots)?p.slots:[],weekendStatus=p?.allowWeekends?"已开启":"已关闭",executionMode=p?.executionModeLabel||"仅调测",waitingText=p?.allowWeekends?"轮询已开启，等待下一次时点。":"轮询已开启，等待下一次工作日时点。";e.pollingSummary.innerHTML=[card("计划",p?.scheduleText||"-"),card("执行模式",executionMode),card("轮询状态",p?.running?"执行中":p?.enabled?"已开启":"已关闭"),card("周末轮询",weekendStatus),card("下次执行",p?.nextRunAtText||"-"),card("本次可跑",`${o.reusableCount||0} / ${o.enabledCount||0}`),card("token 已过期",o.expiredCount||0),card("无 token",o.missingTokenCount||0),card("照片可用",o.photoReadyCount||0),card("照片异常",o.photoProblemCount||0)].join("");if(e.pollingExecutionModeDryRun)e.pollingExecutionModeDryRun.checked=p?.executionMode!=="submit";if(e.pollingExecutionModeSubmit)e.pollingExecutionModeSubmit.checked=p?.executionMode==="submit";if(e.pollingTimeOne)e.pollingTimeOne.value=slots[0]?.time||"";if(e.pollingTimeTwo)e.pollingTimeTwo.value=slots[1]?.time||"";const cur=[];if(p?.activeRun){cur.push(line(`执行中：${esc(p.activeRun.slotLabel||"")}`));cur.push(line(`触发方式：${esc(p.activeRun.trigger||"schedule")}`));cur.push(line(`执行模式：${esc(p.activeRun.executionModeLabel||executionMode)}`));cur.push(line(`开始时间：${esc(p.activeRun.startedAtText||"")}`))}else if(p?.enabled){cur.push(line(waitingText));cur.push(line(`轮询模式：${esc(executionMode)}`))}else cur.push(line("轮询当前已关闭，可以单独触发一次手动测试。"));if(slots.length){cur.push(line(`当前时点：${esc(slots.map(slot=>slot.time).join(" / "))}`))}if(p?.locationProfile){cur.push(line(`固定坐标：${esc(p.locationProfile.longitude)} / ${esc(p.locationProfile.latitude)}`));cur.push(line(`目标地址：${esc(p.locationProfile.expectedAddress||"-")}`))}if(p?.lastRun){const d=p.lastRun.details||{};cur.push(line(`最近执行：${esc(p.lastRun.finishedAtText||p.lastRun.startedAtText||"")} / ${esc(p.lastRun.summary||"")}`,p.lastRun.ok?"detail-line-success":"detail-line-danger"));cur.push(line(`上次模式：${esc(p.lastRun.executionModeLabel||executionMode)}`));cur.push(line(`跳过明细：token 过期 ${esc(d.skippedExpiredCount||0)} 个，无 token ${esc(d.skippedMissingTokenCount||0)} 个，照片异常 ${esc(d.skippedPhotoCount||0)} 个`));if(p.lastRun.notification)cur.push(line(`企业微信通知：${esc(notifyText(p.lastRun.notification))}`,notifyTone(p.lastRun.notification)))}e.pollingCurrent.innerHTML=cur.join("");const hist=p?.recentRuns||[];e.pollingHistory.innerHTML=hist.length?hist.map(r=>line(`<strong>${esc(r.slotLabel||"")}</strong><br /><span>${esc(r.trigger||"schedule")} / ${esc(r.executionModeLabel||executionMode)}</span><br /><span>${esc(r.finishedAtText||r.startedAtText||"")}</span><br /><span>${esc(r.summary||"")}</span>`,r.ok?"detail-line-success":"detail-line-danger")).join(""):line("暂无执行记录。");if(p?.running)banner(e.pollingBanner,"neutral",`正在执行：${p.activeRun?.slotLabel||"轮询任务"}`);else if(p?.lastRun?.trigger==="manual")banner(e.pollingBanner,"success",`${p.lastRun?.executionMode==="submit"?"手动真实打卡":"手动测试"}完成：${p.lastRun.summary||"已返回结果"}`);else if(p?.enabled)banner(e.pollingBanner,p?.executionMode==="submit"?"warning":"success",`轮询已开启，下次执行：${p.nextRunAtText||"待计算"}（${executionMode}）`);else banner(e.pollingBanner,"warning","轮询已关闭，仅保留计划预览。");e.btnStartPolling.disabled=!!p?.enabled;e.btnStopPolling.disabled=!p?.enabled&&!p?.running;e.btnRunPollingTest.disabled=!!p?.running;if(e.btnSavePollingMode){e.btnSavePollingMode.disabled=!!p?.running;e.btnSavePollingMode.className=p?.executionMode==="submit"?"secondary-button":"ghost-button"}if(e.btnSavePollingTimes)e.btnSavePollingTimes.disabled=!!p?.running;if(e.btnToggleWeekendPolling){e.btnToggleWeekendPolling.textContent=`周末轮询：${weekendStatus}`;e.btnToggleWeekendPolling.className=p?.allowWeekends?"secondary-button":"ghost-button"}}
-function syncAuthAccount(){const ua=s.accountAuth.account?.userAccount;if(!ua)return;const next=(s.accounts?.accounts||[]).find(i=>i.userAccount===ua);if(next)s.accountAuth.account=next}
-function renderAuthSummary(){const a=s.accountAuth.account;if(!a){e.accountAuthSummary.innerHTML="";return}e.accountAuthUserAccount.value=a.userAccount||"";e.accountAuthSummary.innerHTML=[card("账号状态",stText(a)),card("密码来源",a.hasPassword?`已导入 ${a.passwordMasked||""}`:"未导入，请手动输入"),card("打卡照片",photoStatusText(a)),card("部门",a.department||a.realName||"-"),card("最近结果",a.lastRun?.summary||"暂无")].join("")}
-function renderAuthModal(){const open=!!(s.accountAuth.open&&s.accountAuth.account);e.accountAuthModal.classList.toggle("hidden",!open);e.accountAuthModal.setAttribute("aria-hidden",String(!open));syncBody();if(open)renderAuthSummary()}
-function closeAuthModal(){s.accountAuth={open:false,account:null,requestId:""};e.accountAuthPassword.value="";e.accountAuthCode.value="";e.accountAuthCaptchaImage.removeAttribute("src");renderAuthModal()}
-function renderNotify(n){s.notify=n;e.notifyEnabled.checked=!!n?.enabled;e.notifyOnSubmit.checked=!!n?.notifyOnSubmit;e.notifyOnPolling.checked=!!n?.notifyOnPolling;e.notifyMentionAllOnFailure.checked=!!n?.mentionAllOnFailure;e.notifyWebhookUrl.value="";e.notifyWebhookUrl.placeholder=n?.hasWebhook?`已保存：${n.webhookMasked}`:"请输入企业微信群机器人 webhook URL";e.notifySummary.innerHTML=[card("通知状态",n?.enabled?"已启用":"已关闭"),card("Webhook",n?.hasWebhook?"已配置":"未配置"),card("真实打卡",n?.notifyOnSubmit?"发送":"不发送"),card("轮询汇总",n?.notifyOnPolling?"发送":"不发送"),card("失败时 @all",n?.mentionAllOnFailure?"开启":"关闭"),card("最近保存",n?.updatedAtText||"-")].join("");const details=[];if(n?.webhookMasked)details.push(line(`Webhook：${esc(n.webhookMasked)}`));if(n?.lastTest)details.push(line(`最近测试：${esc(n.lastTest.sentAtText||"-")} / ${esc(notifyText(n.lastTest))}`,notifyTone(n.lastTest)));if(n?.lastDelivery)details.push(line(`最近发送：${esc(n.lastDelivery.sentAtText||"-")} / ${esc(notifyText(n.lastDelivery))}`,notifyTone(n.lastDelivery)));e.notifyDetails.innerHTML=details.length?details.join(""):line("还没有企业微信群通知记录。");if(!n?.hasWebhook)banner(e.notifyBanner,"warning","请先配置企业微信群机器人 webhook。留空保存不会覆盖已存地址。");else if(!n?.enabled)banner(e.notifyBanner,"neutral","Webhook 已保存，当前通知未启用。");else banner(e.notifyBanner,"success","企业微信群通知已启用。")}
-function buildNotifyPayload(){return{webhookUrl:e.notifyWebhookUrl.value.trim(),enabled:e.notifyEnabled.checked,notifyOnSubmit:e.notifyOnSubmit.checked,notifyOnPolling:e.notifyOnPolling.checked,mentionAllOnFailure:e.notifyMentionAllOnFailure.checked}}
-const reusableAccounts=()=> (s.accounts?.accounts||[]).filter(a=>a.session?.reusable);
-function renderRunResult(r=null){if(!r){e.pollingRunResult.innerHTML="";e.pollingRunResult.classList.add("hidden");return}const resp=r.result?.submitResponse||{},notification=r.notification||null,blocks=[line(`<strong>提交结果</strong><br /><span>${esc(r.userAccount)} / ${r.productionWritePerformed?"已触发真实打卡":"未成功提交"}</span>`,r.productionWritePerformed?"detail-line-success":"detail-line-danger"),line(`<strong>服务端响应</strong><br /><span>${esc(resp.retCode||"-")} / ${esc(resp.retMsg||"-")}</span>`)] ;if(notification)blocks.push(line(`<strong>企业微信通知</strong><br /><span>${esc(notifyText(notification))}</span>`,notifyTone(notification)));e.pollingRunResult.innerHTML=blocks.join("");e.pollingRunResult.classList.remove("hidden")}
-function renderRunModal(){const open=!!s.run.open;e.pollingRunModal.classList.toggle("hidden",!open);e.pollingRunModal.setAttribute("aria-hidden",String(!open));syncBody();if(!open)return;const list=reusableAccounts();const currentValue=s.run.selectedUserAccount||e.pollingRunAccount.value||"";e.pollingRunModeFlow.checked=s.run.mode==="flow";e.pollingRunModeSubmit.checked=s.run.mode==="submit";e.pollingRunSubmitFields.classList.toggle("hidden",s.run.mode!=="submit");e.pollingRunAccount.innerHTML=list.length?list.map(a=>`<option value="${esc(a.userAccount)}">${esc(a.userAccount)}${a.realName?` / ${esc(a.realName)}`:""}</option>`).join(""):'<option value="">当前没有可用账号</option>';if(list.length){const nextValue=list.some(a=>a.userAccount===currentValue)?currentValue:list[0].userAccount;e.pollingRunAccount.value=nextValue;s.run.selectedUserAccount=nextValue}else{s.run.selectedUserAccount="";e.pollingRunAccount.value=""}const selected=list.find(a=>a.userAccount===s.run.selectedUserAccount)||null;e.pollingRunPhotoStatus.innerHTML=selected?[line(`<strong>照片状态</strong><br /><span>${esc(photoStatusText(selected))}</span>`,photoStatusTone(selected)),line(`<strong>照片路径</strong><br /><span>${esc(selected.photoPath||"-")}</span>`,selected?.photo?.exists?"":"detail-line-danger")].join(""):"";if(s.run.mode==="submit"){if(!list.length){banner(e.pollingRunBanner,"error","当前没有可复用 token 的账号，无法执行真实打卡。");e.btnPollingRunConfirm.disabled=true}else if(!selected?.photo?.exists){banner(e.pollingRunBanner,"error",`${selected?.userAccount||"当前账号"} ${photoStatusText(selected)}，无法执行真实打卡。`);e.btnPollingRunConfirm.disabled=true}else{banner(e.pollingRunBanner,"warning","真实打卡会调用生产提交接口，并自动使用表格中的照片路径。");e.btnPollingRunConfirm.disabled=false}}else{banner(e.pollingRunBanner,"neutral","流程调测会批量执行 dry-run，不会提交真实打卡。");e.btnPollingRunConfirm.disabled=false}}
-function openRunModal(){const first=reusableAccounts()[0]?.userAccount||"";s.run={open:true,mode:"flow",selectedUserAccount:s.run.selectedUserAccount||first};renderRunResult();renderRunModal()}
-function closeRunModal(){s.run.open=false;renderRunResult();renderRunModal()}function renderClearTokensModal(){const open=!!s.clearTokens.open;e.clearTokensModal.classList.toggle("hidden",!open);e.clearTokensModal.setAttribute("aria-hidden",String(!open));syncBody();if(!open)return;const total=s.accounts?.totalCount||0,reusable=s.accounts?.reusableCount||0,expired=s.accounts?.expiredCount||0,missing=s.accounts?.missingTokenCount||0;e.clearTokensSummary.innerHTML=[line(`<strong>影响范围</strong><br /><span>当前共 ${esc(total)} 个账号，其中可复用 token ${esc(reusable)} 个、已过期 ${esc(expired)} 个、无 token ${esc(missing)} 个。</span>`,"detail-line-danger"),line(`<strong>确认提示</strong><br /><span>点击“再次确认并清空”后，所有账号都需要重新获取 token。</span>`)].join("");banner(e.clearTokensBanner,"warning","这个操作会清空所有账号的本地 token 缓存，并同时清掉当前主会话。")}function openClearTokensModal(){s.clearTokens.open=true;renderClearTokensModal()}function closeClearTokensModal(){s.clearTokens.open=false;renderClearTokensModal()}async function clearAllAccountTokens(){setLoading(e.btnClearTokensConfirm,true,"清空中...");try{const d=await api("/api/accounts/clear-tokens",{method:"POST"});if(s.accountAuth.open)closeAuthModal();if(s.run.open)closeRunModal();s.session=null;s.run.selectedUserAccount="";banner(e.clearTokensBanner,"success",`已清空 ${d.clearedCount||0} 个账号 token 缓存。`);out(d);await loadSession(true);await loadAccounts(true);await loadPolling(true);banner(e.pollingBanner,"warning","全部账号 token 已清空，请按需重新获取。");window.setTimeout(closeClearTokensModal,500)}catch(err){banner(e.clearTokensBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnClearTokensConfirm,false)}}
-async function api(path,opt={}){const resp=await fetch(path,{headers:{Accept:"application/json",...(opt.headers||{})},...opt});const data=await resp.json().catch(()=>({}));if(!resp.ok)throw new Error(data.error||`${resp.status} ${resp.statusText}`);return data}
-async function loadConfig(){const d=await api("/api/config");s.config=d;e.configApi.textContent=d.baseApiUrl;return d}
-async function loadSession(silent=false){const d=await api("/api/session");s.session=d;banner(e.sessionBanner,d.cached?"success":"warning",d.cached?"检测到本地可复用 token。":"当前没有可复用 token，需要手动登录。");renderSession(d);if(!silent)out(d);return d}
-async function loadCaptcha(){setLoading(e.btnForceCaptcha,true,"刷新中...");setLoading(e.btnCaptcha,true,"加载中...");try{const d=await api("/api/captcha");s.requestId=d.requestId;e.captchaImage.src=d.imageDataUrl;out(d);return d}finally{setLoading(e.btnForceCaptcha,false);setLoading(e.btnCaptcha,false)}}
-async function loadAccountCaptcha(userAccount){setLoading(e.btnAccountAuthRefresh,true,"刷新中...");setLoading(e.btnAccountAuthCaptcha,true,"加载中...");try{const d=await api(`/api/accounts/captcha?userAccount=${encodeURIComponent(userAccount)}`);s.accountAuth.requestId=d.requestId;e.accountAuthCaptchaImage.src=d.imageDataUrl;banner(e.accountAuthBanner,"neutral",`验证码已刷新，请为 ${userAccount} 输入验证码。`);out(d);return d}catch(err){banner(e.accountAuthBanner,"error",msg(err));out({error:msg(err),userAccount});throw err}finally{setLoading(e.btnAccountAuthRefresh,false);setLoading(e.btnAccountAuthCaptcha,false)}}
-async function loadAccounts(silent=false){const d=await api("/api/accounts");s.accounts=d;renderAccounts(d);syncAccountsListUI(d);syncAuthAccount();renderAuthModal();renderRunModal();renderClearTokensModal();if(!silent)out(d);return d}
-async function loadPolling(silent=false){const d=await api("/api/clock-polling/status");renderPolling(d);if(!silent)out(d);return d}async function loadNotifyConfig(silent=false){const d=await api("/api/notify-config");renderNotify(d);if(!silent)out(d);return d}async function saveNotifyConfig(){let d=null;setLoading(e.btnSaveNotify,true,"保存中...");try{d=await api("/api/notify-config",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify(buildNotifyPayload())});banner(e.notifyBanner,"success",d.webhookUpdated?"通知配置已保存，webhook 已更新。":"通知配置已保存。");out(d)}catch(err){banner(e.notifyBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnSaveNotify,false);if(d)renderNotify(d)}}async function testNotifyConfig(){let d=null;setLoading(e.btnTestNotify,true,"发送中...");try{d=await api("/api/notify-test",{method:"POST"});banner(e.notifyBanner,d.sent?"success":"warning",notifyText(d));out(d)}catch(err){banner(e.notifyBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnTestNotify,false);await loadNotifyConfig(true).catch(()=>{if(d)renderNotify(s.notify)})}}
-function startAutoRefresh(){if(s.timer)window.clearInterval(s.timer);s.timer=window.setInterval(()=>{loadAccounts(true).catch(()=>{});loadPolling(true).catch(()=>{});loadNotifyConfig(true).catch(()=>{})},15000)}
-async function waitPollingDone(){for(let i=0;i<20;i+=1){await sleep(1500);const d=await loadPolling(true);if(!d.running){out(d);return d}}return s.polling}
-function pickFileMeta(){const f=e.accountsFile.files?.[0];s.importMeta=f?{name:f.name,size:f.size,type:f.type,lastModifiedText:dt(f.lastModified)}:null;renderImport()}
-async function openAuthModal(userAccount){const account=(s.accounts?.accounts||[]).find(i=>i.userAccount===userAccount);if(!account){out({error:`未找到账号：${userAccount}`});return}s.accountAuth={open:true,account,requestId:""};e.accountAuthPassword.value="";e.accountAuthCode.value="";e.accountAuthCaptchaImage.removeAttribute("src");renderAuthModal();banner(e.accountAuthBanner,"neutral",`正在为 ${userAccount} 获取验证码...`);await loadAccountCaptcha(userAccount)}
-async function handleLogin(ev){ev.preventDefault();if(!e.agreePolicy.checked){banner(e.sessionBanner,"error","请先勾选隐私政策确认。");return}if(!s.requestId)await loadCaptcha();const body={userAccount:e.userAccount.value.trim(),password:e.password.value,verificationCode:e.verificationCode.value.trim(),requestId:s.requestId};if(!body.userAccount||!body.password||!body.verificationCode||!body.requestId){banner(e.sessionBanner,"error","账号、密码、验证码和 requestId 都不能为空。");return}setLoading(e.btnLogin,true,"登录中...");try{const d=await api("/api/login",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify(body)});s.session=d;renderSession(d);banner(e.sessionBanner,"success","登录成功，已写入本地 token 缓存。");out(d);await loadAccounts(true);await loadPolling(true)}catch(err){banner(e.sessionBanner,"error",msg(err));out({error:msg(err),requestId:s.requestId});await loadCaptcha()}finally{setLoading(e.btnLogin,false)}}
-async function handleReuse(){setLoading(e.btnReuse,true,"检查中...");try{await loadSession();await loadAccounts(true);await loadPolling(true)}finally{setLoading(e.btnReuse,false)}}
-async function handleLogout(){setLoading(e.btnLogout,true,"清理中...");try{const d=await api("/api/logout",{method:"POST"});s.session=null;renderSession(null);banner(e.sessionBanner,"warning","主会话已清理。");out(d);await loadCaptcha();await loadAccounts(true);await loadPolling(true)}finally{setLoading(e.btnLogout,false)}}
-async function handleImport(){const f=e.accountsFile.files?.[0];if(!f){out({error:"请先选择 xlsx 文件。"});return}s.importMeta={name:f.name,size:f.size,type:f.type,lastModifiedText:dt(f.lastModified)};renderImport();const fd=new FormData();fd.append("file",f,f.name);setLoading(e.btnImportAccounts,true,"导入中...");try{const d=await api("/api/accounts/import",{method:"POST",body:fd});s.importSummary=d.importSummary;renderImport();s.accounts=d.registry;accountsListInitialized=false;renderAccounts(d.registry);syncAccountsListUI(d.registry);await loadPolling(true);out(d)}catch(err){banner(e.importBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnImportAccounts,false)}}
-async function handleTableClick(ev){const row=ev.target.closest("[data-user-account]");if(!row)return;const userAccount=row.dataset.userAccount;if(!userAccount)return;const account=(s.accounts?.accounts||[]).find(i=>i.userAccount===userAccount);const button=ev.target.closest("button[data-action]");const action=button?.dataset.action||ev.target.closest("[data-action]")?.dataset.action;try{if(action==="open-login"&&account){await openAuthModal(userAccount);return}if(action==="show-account"&&account){out(account);return}if(action==="toggle"){const d=await api("/api/accounts/toggle",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({userAccount,enabled:!account?.enabled})});s.accounts=d.registry;renderAccounts(d.registry);syncAccountsListUI(d.registry);await loadPolling(true);out(d);return}if(action==="remove"){const d=await api("/api/accounts/remove",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({userAccount})});await loadAccounts(true);await loadPolling(true);if(s.accountAuth.account?.userAccount===userAccount)closeAuthModal();out(d)}}catch(err){out({error:msg(err),userAccount,action})}}
-async function submitAccountToken(){const userAccount=s.accountAuth.account?.userAccount,requestId=s.accountAuth.requestId,verificationCode=e.accountAuthCode.value.trim(),password=e.accountAuthPassword.value.trim();if(!userAccount||!requestId){banner(e.accountAuthBanner,"error","请先刷新验证码。");return}if(!verificationCode){banner(e.accountAuthBanner,"error","请输入验证码。");return}setLoading(e.btnAccountAuthSubmit,true,"获取中...");try{const d=await api("/api/accounts/login",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({userAccount,password,verificationCode,requestId})});banner(e.accountAuthBanner,"success",`${userAccount} 的 token 已刷新。`);out(d);await loadAccounts(true);await loadPolling(true);window.setTimeout(closeAuthModal,400)}catch(err){banner(e.accountAuthBanner,"error",msg(err));out({error:msg(err),userAccount,requestId});await loadAccountCaptcha(userAccount).catch(()=>{})}finally{setLoading(e.btnAccountAuthSubmit,false)}}
-async function startPolling(){let d=null;setLoading(e.btnStartPolling,true,"开启中...");try{d=await api("/api/clock-polling/start",{method:"POST"});out(d)}catch(err){banner(e.pollingBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnStartPolling,false);if(d)renderPolling(d)}}
-async function stopPolling(){let d=null;setLoading(e.btnStopPolling,true,"关闭中...");try{d=await api("/api/clock-polling/stop",{method:"POST"});out(d)}catch(err){banner(e.pollingBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnStopPolling,false);if(d)renderPolling(d)}}
-async function toggleWeekendPolling(){const next=!(s.polling?.allowWeekends);let d=null;setLoading(e.btnToggleWeekendPolling,true,next?"开启中...":"关闭中...");try{d=await api("/api/clock-polling/weekends",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({allowWeekends:next})});out(d)}catch(err){banner(e.pollingBanner,"error",msg(err));out({error:msg(err),allowWeekends:next})}finally{setLoading(e.btnToggleWeekendPolling,false);if(d)renderPolling(d)}}
-async function savePollingMode(){const executionMode=e.pollingExecutionModeSubmit?.checked?"submit":"dry-run";let d=null;setLoading(e.btnSavePollingMode,true,"保存中...");try{d=await api("/api/clock-polling/mode",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({executionMode})});banner(e.pollingBanner,executionMode==="submit"?"warning":"success",`轮询模式已更新为 ${d.executionModeLabel||(executionMode==="submit"?"真实提交":"仅调测")}。`);out(d)}catch(err){banner(e.pollingBanner,"error",msg(err));out({error:msg(err),executionMode})}finally{setLoading(e.btnSavePollingMode,false);if(d)renderPolling(d)}}
-async function savePollingTimes(){const times=[e.pollingTimeOne?.value||"",e.pollingTimeTwo?.value||""];let d=null;if(times.some(v=>!v)){banner(e.pollingBanner,"error","请先填写两个打卡时间。");return}setLoading(e.btnSavePollingTimes,true,"保存中...");try{d=await api("/api/clock-polling/times",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({times})});banner(e.pollingBanner,"success",`打卡时间已更新为 ${d.scheduleText||times.join(" / ")}。`);out(d)}catch(err){banner(e.pollingBanner,"error",msg(err));out({error:msg(err),times})}finally{setLoading(e.btnSavePollingTimes,false);if(d)renderPolling(d)}}
-async function runNow(){if(s.run.mode==="flow"){setLoading(e.btnPollingRunConfirm,true,"执行中...");try{const d=await api("/api/clock-polling/test",{method:"POST"});renderPolling(d);banner(e.pollingBanner,"neutral","已触发手动流程调测，正在执行 dry-run...");out(d);await waitPollingDone();await loadNotifyConfig(true).catch(()=>{});closeRunModal()}catch(err){banner(e.pollingRunBanner,"error",msg(err));out({error:msg(err)})}finally{setLoading(e.btnPollingRunConfirm,false)}return}const userAccount=s.run.selectedUserAccount||e.pollingRunAccount.value;if(!userAccount){banner(e.pollingRunBanner,"error","当前没有可用于真实打卡的账号。");return}setLoading(e.btnPollingRunConfirm,true,"提交中...");try{const d=await api("/api/clock-polling/submit",{method:"POST",headers:{"Content-Type":"application/json;charset=UTF-8"},body:JSON.stringify({userAccount})});s.run.selectedUserAccount=userAccount;banner(e.pollingRunBanner,"success",`${userAccount} 真实打卡已提交，结果保留在当前弹层。`);renderRunResult(d);out(d);await loadAccounts(true);await loadPolling(true);await loadNotifyConfig(true).catch(()=>{});banner(e.pollingBanner,"success",`${userAccount} 真实打卡已提交，请查看弹层结果或返回数据。`)}catch(err){banner(e.pollingRunBanner,"error",msg(err));renderRunResult();out({error:msg(err),userAccount})}finally{setLoading(e.btnPollingRunConfirm,false)}}
-function bind(){e.loginForm.addEventListener("submit",handleLogin);e.btnReuse.addEventListener("click",handleReuse);e.btnLogout.addEventListener("click",handleLogout);e.btnRefreshSession.addEventListener("click",()=>loadSession());e.btnCaptcha.addEventListener("click",loadCaptcha);e.btnForceCaptcha.addEventListener("click",loadCaptcha);e.accountsFile.addEventListener("change",pickFileMeta);e.btnImportAccounts.addEventListener("click",handleImport);e.btnRefreshAccounts.addEventListener("click",()=>loadAccounts());e.btnClearAccountTokens.addEventListener("click",openClearTokensModal);toggleAccountsListButton()?.addEventListener("click",toggleAccountsList);e.accountsTable.addEventListener("click",handleTableClick);e.btnRefreshPolling.addEventListener("click",()=>loadPolling());e.btnSavePollingMode?.addEventListener("click",savePollingMode);e.btnSavePollingTimes.addEventListener("click",savePollingTimes);e.btnRefreshNotify.addEventListener("click",()=>loadNotifyConfig());e.btnSaveNotify.addEventListener("click",saveNotifyConfig);e.btnTestNotify.addEventListener("click",testNotifyConfig);e.btnStartPolling.addEventListener("click",startPolling);e.btnToggleWeekendPolling.addEventListener("click",toggleWeekendPolling);e.btnRunPollingTest.addEventListener("click",openRunModal);e.btnStopPolling.addEventListener("click",stopPolling);e.pollingRunModeFlow.addEventListener("change",()=>{s.run.mode="flow";renderRunResult();renderRunModal()});e.pollingRunModeSubmit.addEventListener("change",()=>{s.run.mode="submit";renderRunResult();renderRunModal()});e.pollingRunAccount.addEventListener("change",()=>{s.run.selectedUserAccount=e.pollingRunAccount.value;renderRunResult();renderRunModal()});e.btnPollingRunConfirm.addEventListener("click",runNow);e.btnPollingRunCancel.addEventListener("click",closeRunModal);e.btnPollingRunClose.addEventListener("click",closeRunModal);e.btnClearTokensConfirm.addEventListener("click",clearAllAccountTokens);e.btnClearTokensCancel.addEventListener("click",closeClearTokensModal);e.btnClearTokensClose.addEventListener("click",closeClearTokensModal);e.btnAccountAuthCaptcha.addEventListener("click",()=>s.accountAuth.account?.userAccount&&loadAccountCaptcha(s.accountAuth.account.userAccount));e.btnAccountAuthRefresh.addEventListener("click",()=>s.accountAuth.account?.userAccount&&loadAccountCaptcha(s.accountAuth.account.userAccount));e.btnAccountAuthSubmit.addEventListener("click",submitAccountToken);e.btnAccountAuthClose.addEventListener("click",closeAuthModal);e.accountAuthModal.addEventListener("click",ev=>{if(ev.target?.dataset?.action==="close-account-auth")closeAuthModal()});e.pollingRunModal.addEventListener("click",ev=>{if(ev.target?.dataset?.action==="close-polling-run")closeRunModal()});e.clearTokensModal.addEventListener("click",ev=>{if(ev.target?.dataset?.action==="close-clear-tokens")closeClearTokensModal()});document.addEventListener("keydown",ev=>{if(ev.key==="Escape"&&s.accountAuth.open)closeAuthModal();if(ev.key==="Escape"&&s.run.open)closeRunModal();if(ev.key==="Escape"&&s.clearTokens.open)closeClearTokensModal()});window.addEventListener("unhandledrejection",ev=>out({scope:"unhandledrejection",error:msg(ev.reason)}));window.addEventListener("error",ev=>{if(ev.error||ev.message)out({scope:"window-error",error:msg(ev.error||ev.message)})})}
-async function boot(){renderSession(null);renderImport();renderAuthModal();renderRunModal();renderClearTokensModal();try{await loadConfig()}catch(err){out({scope:"load-config",error:msg(err)})}try{await loadSession(true)}catch(err){banner(e.sessionBanner,"error",msg(err));out({scope:"load-session",error:msg(err)})}try{await loadAccounts(true)}catch(err){banner(e.importBanner,"error",msg(err));out({scope:"load-accounts",error:msg(err)})}try{await loadPolling()}catch(err){banner(e.pollingBanner,"error",msg(err));out({scope:"load-polling",error:msg(err)})}try{await loadNotifyConfig(true)}catch(err){banner(e.notifyBanner,"error",msg(err));out({scope:"load-notify",error:msg(err)})}try{await loadCaptcha()}catch(err){banner(e.sessionBanner,"error",msg(err));out({scope:"load-captcha",error:msg(err)})}startAutoRefresh()}
+const state = {
+  requestId: "",
+  config: null,
+  session: null,
+  accounts: null,
+  polling: null,
+  notify: null,
+  timer: null,
+  importMeta: null,
+  importSummary: null,
+  auth: { open: false, account: null, requestId: "" },
+  run: { open: false, mode: "flow", selected: "", result: null },
+  clear: { open: false },
+};
+
+const $ = (selector) => document.querySelector(selector);
+
+const elements = {
+  configApi: $("#config-api"),
+  output: $("#output"),
+  sessionBanner: $("#session-banner"),
+  sessionSummary: $("#session-summary"),
+  loginForm: $("#login-form"),
+  userAccount: $("#userAccount"),
+  password: $("#password"),
+  verificationCode: $("#verificationCode"),
+  agreePolicy: $("#agreePolicy"),
+  captchaImage: $("#captcha-image"),
+  btnCaptcha: $("#btn-captcha"),
+  btnForceCaptcha: $("#btn-force-captcha"),
+  btnLogin: $("#btn-login"),
+  btnReuse: $("#btn-reuse"),
+  btnLogout: $("#btn-logout"),
+  btnRefreshSession: $("#btn-refresh-session"),
+  accountsFile: $("#accounts-file"),
+  btnImportAccounts: $("#btn-import-accounts"),
+  btnRefreshAccounts: $("#btn-refresh-accounts"),
+  importBanner: $("#import-banner"),
+  importFileSummary: $("#import-file-summary"),
+  importResultSummary: $("#import-result-summary"),
+  importWarningList: $("#import-warning-list"),
+  accountsSummary: $("#accounts-summary"),
+  accountsTable: $("#accounts-table"),
+  btnToggleAccountList: $("#btn-toggle-account-list"),
+  accountsListBanner: $("#accounts-list-banner"),
+  btnClearAccountTokens: $("#btn-clear-account-tokens"),
+  pollingBanner: $("#polling-banner"),
+  pollingSummary: $("#polling-summary"),
+  pollingCurrent: $("#polling-current"),
+  pollingHistory: $("#polling-history"),
+  pollingExecutionModeDryRun: $("#polling-execution-mode-dry-run"),
+  pollingExecutionModeSubmit: $("#polling-execution-mode-submit"),
+  pollingTimeOne: $("#polling-time-1"),
+  pollingTimeTwo: $("#polling-time-2"),
+  pollingRandomDelayEnabled: $("#polling-random-delay-enabled"),
+  btnRefreshPolling: $("#btn-refresh-polling"),
+  btnStartPolling: $("#btn-start-polling"),
+  btnToggleWeekendPolling: $("#btn-toggle-weekend-polling"),
+  btnSavePollingMode: $("#btn-save-polling-mode"),
+  btnSavePollingTimes: $("#btn-save-polling-times"),
+  btnRunPollingTest: $("#btn-run-polling-test"),
+  btnStopPolling: $("#btn-stop-polling"),
+  notifyBanner: $("#notify-banner"),
+  notifySummary: $("#notify-summary"),
+  notifyDetails: $("#notify-details"),
+  notifyWebhookUrl: $("#notify-webhook-url"),
+  notifyEnabled: $("#notify-enabled"),
+  notifyOnSubmit: $("#notify-on-submit"),
+  notifyOnPolling: $("#notify-on-polling"),
+  notifyMentionAllOnFailure: $("#notify-mention-all-on-failure"),
+  btnRefreshNotify: $("#btn-refresh-notify"),
+  btnSaveNotify: $("#btn-save-notify"),
+  btnTestNotify: $("#btn-test-notify"),
+  authModal: $("#account-auth-modal"),
+  authBanner: $("#account-auth-banner"),
+  authSummary: $("#account-auth-summary"),
+  authUserAccount: $("#account-auth-user-account"),
+  authPassword: $("#account-auth-password"),
+  authCode: $("#account-auth-code"),
+  authCaptchaImage: $("#account-auth-captcha-image"),
+  btnAuthCaptcha: $("#btn-account-auth-captcha"),
+  btnAuthRefresh: $("#btn-account-auth-refresh"),
+  btnAuthSubmit: $("#btn-account-auth-submit"),
+  btnAuthClose: $("#btn-account-auth-close"),
+  runModal: $("#polling-run-modal"),
+  runBanner: $("#polling-run-banner"),
+  runModeFlow: $("#polling-run-mode-flow"),
+  runModeSubmit: $("#polling-run-mode-submit"),
+  runSubmitFields: $("#polling-run-submit-fields"),
+  runAccount: $("#polling-run-account"),
+  runPhotoStatus: $("#polling-run-photo-status"),
+  runResult: $("#polling-run-result"),
+  btnRunConfirm: $("#btn-polling-run-confirm"),
+  btnRunCancel: $("#btn-polling-run-cancel"),
+  btnRunClose: $("#btn-polling-run-close"),
+  clearModal: $("#clear-tokens-modal"),
+  clearBanner: $("#clear-tokens-banner"),
+  clearSummary: $("#clear-tokens-summary"),
+  btnClearConfirm: $("#btn-clear-tokens-confirm"),
+  btnClearCancel: $("#btn-clear-tokens-cancel"),
+  btnClearClose: $("#btn-clear-tokens-close"),
+};
+
+const ACCOUNTS_COLLAPSE_THRESHOLD = 1;
+let accountsListInitialized = false;
+let accountsListExpanded = true;
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function card(label, value) {
+  return `<div class="summary-item"><span class="summary-label">${escapeHtml(label)}</span><span class="summary-value">${escapeHtml(value)}</span></div>`;
+}
+
+function line(content, className = "") {
+  return `<div class="detail-line ${className}">${content}</div>`;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function getErrorMessage(error) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "未知错误";
+}
+
+function setOutput(value) {
+  if (!elements.output) return;
+  elements.output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+}
+
+function setBanner(node, tone, text) {
+  if (!node) return;
+  node.className = `session-banner ${tone}`;
+  node.textContent = text;
+}
+
+function setLoading(button, loading, text = "处理中...") {
+  if (!button) return;
+  const hasImage = !!button.querySelector("img");
+  if (loading) {
+    if (!button.dataset.originalText) button.dataset.originalText = button.textContent || "";
+    button.disabled = true;
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+    if (!hasImage) button.textContent = text;
+    return;
+  }
+  button.disabled = false;
+  button.classList.remove("is-loading");
+  button.removeAttribute("aria-busy");
+  if (!hasImage && button.dataset.originalText) button.textContent = button.dataset.originalText;
+}
+
+function syncModalState() {
+  document.body.classList.toggle("modal-open", !!(state.auth.open || state.run.open || state.clear.open));
+}
+
+function formatBytes(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let size = value;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size.toFixed(size >= 100 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function buildPollingSummary(details) {
+  return `账号 ${details?.totalCount || 0} 个 / 成功 ${details?.successCount || 0} / 跳过 ${details?.skippedCount || 0} / 失败 ${details?.failedCount || 0}`;
+}
+
+function getSessionStatusText(account) {
+  const session = account?.session || {};
+  if (session.reusable) return `可复用 / ${session.tokenExpText || "无到期时间"}`;
+  if (session.status === "expired") return `token 已过期 / ${session.tokenExpText || "待重新登录"}`;
+  return "无 token";
+}
+
+function getSessionStatusTone(account) {
+  const session = account?.session || {};
+  if (session.reusable) return "success";
+  if (session.status === "expired") return "warning";
+  return "muted";
+}
+
+function getPhotoStatusText(account) {
+  return account?.photo?.statusText || "未配置照片";
+}
+
+function getNotifyStatusText(payload) {
+  return payload?.statusText || "尚未触发";
+}
+
+function getNotifyTone(payload) {
+  if (!payload) return "";
+  if (payload.sent) return "detail-line-success";
+  if (payload.attempted) return "detail-line-danger";
+  return "";
+}
+
+function getReusableAccounts() {
+  return (state.accounts?.accounts || []).filter((account) => account.enabled && account.session?.reusable);
+}
+
+function renderSession(session) {
+  state.session = session;
+  const reusableCount = state.accounts?.reusableCount || 0;
+  const totalCount = state.accounts?.totalCount || 0;
+  if (!session || !session.cached) {
+    if (reusableCount > 0) {
+      setBanner(elements.sessionBanner, "neutral", `当前主会话没有可复用 token，但多账号池中有 ${reusableCount} 个账号可直接参与轮询。`);
+      elements.sessionSummary.innerHTML = [
+        card("主会话", "当前没有可复用 token"),
+        card("多账号轮询", `${reusableCount} / ${totalCount} 个账号可用`),
+        card("提示", "如果只是跑轮询，不需要重新登录主会话"),
+      ].join("");
+    } else {
+      setBanner(elements.sessionBanner, "warning", "当前没有可复用 token，需要手动登录。");
+      elements.sessionSummary.innerHTML = [card("状态", "当前没有可复用 token"), card("提示", "需要手动登录并填写验证码")].join("");
+    }
+    return;
+  }
+
+  setBanner(
+    elements.sessionBanner,
+    session.reusable ? "success" : "warning",
+    session.reusable ? `检测到本地可复用 token。${session.tokenExpText ? `到期：${session.tokenExpText}` : ""}` : "检测到本地缓存，但 token 已不可复用。",
+  );
+  elements.sessionSummary.innerHTML = [
+    card("账号", session.userAccount || "-"),
+    card("姓名", session.userName || "-"),
+    card("部门", session.department || "-"),
+    card("Token 到期", session.tokenExpText || "-"),
+  ].join("");
+}
+
+function renderImport() {
+  const meta = state.importMeta;
+  const summary = state.importSummary;
+
+  elements.importFileSummary.innerHTML = meta
+    ? [
+        card("文件名", meta.name),
+        card("文件大小", formatBytes(meta.size)),
+        card("最后修改", meta.lastModifiedText),
+        card("文件类型", meta.type || ".xlsx"),
+      ].join("")
+    : "";
+
+  elements.importResultSummary.innerHTML = summary
+    ? [
+        card("工作表", summary.sheetInfo?.activeSheet || "-"),
+        card("数据行", summary.sourceRowCount || 0),
+        card("唯一账号", summary.importedCount || 0),
+        card("新增 / 合并", `${summary.createdCount || 0} / ${summary.mergedCount || 0}`),
+        card("密码更新", summary.passwordChangedCount || 0),
+        card("照片路径更新", summary.photoPathChangedCount || 0),
+        card("照片可用 / 异常", `${summary.photoReadyCount || 0} / ${summary.photoProblemCount || 0}`),
+      ].join("")
+    : "";
+
+  const warnings = [];
+  if (summary?.sheetInfo?.headerRow?.length) {
+    warnings.push(line(`<strong>表头</strong><br /><span>${escapeHtml(summary.sheetInfo.headerRow.join(" / "))}</span>`));
+  }
+  for (const item of summary?.warnings || []) warnings.push(line(escapeHtml(item), "detail-line-danger"));
+  for (const item of summary?.mergedChangeDetails || []) {
+    const changes = Array.isArray(item.updatedFields) ? item.updatedFields.join("、") : "";
+    warnings.push(line(`<strong>合并更新</strong><br /><span>${escapeHtml(item.userAccount)} / 更新字段：${escapeHtml(changes || "-")}</span>`));
+  }
+  for (const item of summary?.duplicateAccountsInFile || []) {
+    warnings.push(
+      line(
+        `<strong>重复账号</strong><br /><span>${escapeHtml(item.userAccount)} 出现在第 ${escapeHtml((item.rows || []).join("、"))} 行</span>`,
+        "detail-line-danger",
+      ),
+    );
+  }
+  for (const item of summary?.photoIssues || []) {
+    warnings.push(
+      line(
+        `<strong>照片异常</strong><br /><span>${escapeHtml(item.userAccount)} / ${escapeHtml(item.statusText || "照片不可用")} / ${escapeHtml(item.path || "-")}</span>`,
+        "detail-line-danger",
+      ),
+    );
+  }
+  elements.importWarningList.innerHTML = warnings.join("");
+
+  if (!meta && !summary) {
+    setBanner(elements.importBanner, "neutral", "还没有导入表格。");
+  } else if ((summary?.warnings || []).length || summary?.duplicateAccountCount || summary?.photoProblemCount) {
+    setBanner(elements.importBanner, "warning", "导入完成，但检测到重复账号或照片路径异常，请确认提示信息。");
+  } else if (summary) {
+    setBanner(elements.importBanner, "success", `导入完成，共 ${summary.importedCount || 0} 个账号，新增 ${summary.createdCount || 0} 个。`);
+  } else {
+    setBanner(elements.importBanner, "neutral", "已选择文件，点击“导入账号表”开始解析。");
+  }
+}
+
+function syncAccountList(registry) {
+  const total = registry?.totalCount || 0;
+  if (!total) {
+    accountsListInitialized = false;
+    accountsListExpanded = true;
+    elements.btnToggleAccountList.classList.add("hidden");
+    elements.accountsListBanner.classList.add("hidden");
+    elements.accountsTable.classList.remove("hidden");
+    return;
+  }
+
+  if (!accountsListInitialized) {
+    accountsListExpanded = total <= ACCOUNTS_COLLAPSE_THRESHOLD;
+    accountsListInitialized = true;
+  }
+
+  const collapsed = !accountsListExpanded;
+  elements.btnToggleAccountList.classList.remove("hidden");
+  elements.btnToggleAccountList.textContent = collapsed ? `查看账号列表 (${total})` : "收起账号列表";
+  elements.accountsListBanner.classList.toggle("hidden", !collapsed);
+  elements.accountsListBanner.textContent = collapsed ? `账号较多，已默认收起列表。当前 ${total} 个账号，点击“查看账号列表”展开。` : "";
+  elements.accountsTable.classList.toggle("hidden", collapsed);
+}
+
+function renderAccounts(registry) {
+  state.accounts = registry;
+  if (state.session) renderSession(state.session);
+  syncAccountList(registry);
+
+  elements.accountsSummary.innerHTML = [
+    card("总账号数", registry?.totalCount || 0),
+    card("已启用", registry?.enabledCount || 0),
+    card("可复用 token", registry?.reusableCount || 0),
+    card("待验证码登录", registry?.needsCaptchaLoginCount || 0),
+    card("token 已过期", registry?.expiredCount || 0),
+    card("无 token", registry?.missingTokenCount || 0),
+    card("照片可用", registry?.photoReadyCount || 0),
+    card("照片异常", registry?.photoProblemCount || 0),
+  ].join("");
+
+  const accounts = registry?.accounts || [];
+  if (!accounts.length) {
+    elements.accountsTable.innerHTML = '<div class="empty-state">还没有导入账号表。</div>';
+    return;
+  }
+
+  elements.accountsTable.innerHTML = accounts
+    .map((account) => {
+      const needsLogin = !!account.needsCaptchaLogin;
+      const helper = needsLogin ? account.needsCaptchaLoginReason || "需要人工验证码登录，轮询时会自动跳过。" : "当前账号已有缓存 token，可直接参与轮询。";
+      return `
+        <article class="account-row ${needsLogin ? "clickable needs-token" : ""}" data-user-account="${escapeHtml(account.userAccount)}">
+          <div class="account-main" data-action="${needsLogin ? "open-login" : "show-account"}">
+            <div class="account-title-row">
+              <strong>${escapeHtml(account.userAccount)}</strong>
+              <span class="state-pill ${account.enabled ? "success" : "muted"}">${account.enabled ? "启用" : "停用"}</span>
+              <span class="state-pill ${getSessionStatusTone(account)}">${escapeHtml(getSessionStatusText(account))}</span>
+            </div>
+            <div class="account-meta">
+              <span>${escapeHtml(account.realName || "未命名")}</span>
+              <span>${escapeHtml(account.department || "未配置部门")}</span>
+              <span>密码：${escapeHtml(account.passwordMasked || "未提供")}</span>
+            </div>
+            <div class="account-status-line">${escapeHtml(helper)}</div>
+            <div class="account-status-line ${account.photo?.exists ? "detail-line-success" : "detail-line-danger"}">打卡照片：${escapeHtml(getPhotoStatusText(account))}</div>
+            <div class="account-status-line subtle">${account.photoPath ? `照片路径：${escapeHtml(account.photoPath)}` : "照片路径：未配置"}</div>
+            <div class="account-status-line subtle">最近结果：${escapeHtml(account.lastRun?.summary || "暂无")}</div>
+          </div>
+          <div class="account-actions">
+            <button class="primary-button" type="button" data-action="${needsLogin ? "open-login" : "show-account"}">${needsLogin ? "获取 token" : "查看状态"}</button>
+            <button class="ghost-button" type="button" data-action="toggle">${account.enabled ? "停用" : "启用"}</button>
+            <button class="ghost-button danger" type="button" data-action="remove">删除</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+function renderPolling(polling) {
+  state.polling = polling;
+  const overview = polling?.accountsOverview || {};
+  const slots = Array.isArray(polling?.slots) ? polling.slots : [];
+  const weekendStatus = polling?.allowWeekends ? "已开启" : "已关闭";
+  const executionMode = polling?.executionModeLabel || "仅调测";
+
+  setBanner(
+    elements.pollingBanner,
+    polling?.running ? "success" : polling?.enabled ? "neutral" : "warning",
+    polling?.running
+      ? `轮询执行中：${polling.activeRun?.slotLabel || "轮询任务"}`
+      : polling?.enabled
+        ? `轮询已开启，等待下一次${polling.allowWeekends ? "" : "工作日"}时点。`
+        : "轮询当前已关闭，可以单独触发一次手动测试。",
+  );
+
+  elements.pollingSummary.innerHTML = [
+    card("计划", polling?.scheduleText || "-"),
+    card("执行模式", executionMode),
+    card("轮询状态", polling?.running ? "执行中" : polling?.enabled ? "已开启" : "已关闭"),
+    card("周末轮询", weekendStatus),
+    card("随机偏移", polling?.randomDelayLabel || "关闭"),
+    card("下次执行", polling?.nextRunAtText || "-"),
+    card("本次可跑", `${overview.reusableCount || 0} / ${overview.enabledCount || 0}`),
+    card("token 已过期", overview.expiredCount || 0),
+    card("无 token", overview.missingTokenCount || 0),
+    card("照片可用", overview.photoReadyCount || 0),
+    card("照片异常", overview.photoProblemCount || 0),
+  ].join("");
+
+  elements.btnToggleWeekendPolling.textContent = `周末轮询：${weekendStatus}`;
+  elements.pollingExecutionModeDryRun.checked = polling?.executionMode !== "submit";
+  elements.pollingExecutionModeSubmit.checked = polling?.executionMode === "submit";
+  elements.pollingTimeOne.value = slots[0]?.time || "";
+  elements.pollingTimeTwo.value = slots[1]?.time || "";
+  if (elements.pollingRandomDelayEnabled) elements.pollingRandomDelayEnabled.checked = !!polling?.randomDelayEnabled;
+
+  const currentLines = [];
+  if (polling?.activeRun) {
+    currentLines.push(line(`执行中：${escapeHtml(polling.activeRun.slotLabel || "轮询任务")}`));
+    currentLines.push(line(`触发方式：${escapeHtml(polling.activeRun.trigger || "schedule")}`));
+    currentLines.push(line(`执行模式：${escapeHtml(polling.activeRun.executionModeLabel || executionMode)}`));
+    currentLines.push(line(`开始时间：${escapeHtml(polling.activeRun.startedAtText || "-")}`));
+  } else if (polling?.enabled) {
+    currentLines.push(line(polling.allowWeekends ? "轮询已开启，等待下一次时点。" : "轮询已开启，等待下一次工作日时点。"));
+    currentLines.push(line(`轮询模式：${escapeHtml(executionMode)}`));
+  } else {
+    currentLines.push(line("轮询当前已关闭，可以单独触发一次手动测试。"));
+  }
+
+  if (slots.length) currentLines.push(line(`当前时点：${escapeHtml(slots.map((slot) => slot.time).join(" / "))}`));
+  currentLines.push(line(`随机偏移：${escapeHtml(polling?.randomDelayLabel || "关闭")}`));
+  if ((polling?.nextRunOffsetMinutes || 0) > 0) {
+    currentLines.push(
+      line(
+        `本次偏移：${escapeHtml(polling.nextRunOffsetMinutes)} 分钟 / 基准 ${escapeHtml(
+          polling.nextRunBaseTime || "-",
+        )} / 预计 ${escapeHtml(polling.nextRunScheduledTime || polling.nextRunAtText || "-")}`,
+      ),
+    );
+  }
+  if (polling?.locationProfile) {
+    currentLines.push(line(`固定坐标：${escapeHtml(polling.locationProfile.longitude)} / ${escapeHtml(polling.locationProfile.latitude)}`));
+    currentLines.push(line(`目标地址：${escapeHtml(polling.locationProfile.expectedAddress || "-")}`));
+  }
+  if (polling?.lastRun) {
+    const details = polling.lastRun.details || {};
+    currentLines.push(
+      line(
+        `最近执行：${escapeHtml(polling.lastRun.finishedAtText || polling.lastRun.startedAtText || "-")} / ${escapeHtml(
+          polling.lastRun.summary || buildPollingSummary(details),
+        )}`,
+        polling.lastRun.ok ? "detail-line-success" : "detail-line-danger",
+      ),
+    );
+    currentLines.push(line(`上次模式：${escapeHtml(polling.lastRun.executionModeLabel || executionMode)}`));
+    currentLines.push(
+      line(
+        `跳过明细：token 过期 ${escapeHtml(details.skippedExpiredCount || 0)} 个，无 token ${escapeHtml(
+          details.skippedMissingTokenCount || 0,
+        )} 个，照片异常 ${escapeHtml(details.skippedPhotoCount || 0)} 个`,
+      ),
+    );
+    if (polling.lastRun.notification) {
+      currentLines.push(
+        line(
+          `企业微信通知：${escapeHtml(getNotifyStatusText(polling.lastRun.notification))}`,
+          getNotifyTone(polling.lastRun.notification),
+        ),
+      );
+    }
+  }
+  elements.pollingCurrent.innerHTML = currentLines.join("");
+
+  const history = polling?.recentRuns || [];
+  elements.pollingHistory.innerHTML = history.length
+    ? history
+        .map((item) =>
+          line(
+            `<strong>${escapeHtml(item.slotLabel || "轮询记录")}</strong><br /><span>${escapeHtml(
+              item.trigger || "schedule",
+            )} / ${escapeHtml(item.executionModeLabel || executionMode)}</span><br /><span>${escapeHtml(
+              item.finishedAtText || item.startedAtText || "-",
+            )}</span><br /><span>${escapeHtml(item.summary || buildPollingSummary(item.details || {}))}</span>`,
+            item.ok ? "detail-line-success" : "detail-line-danger",
+          ),
+        )
+        .join("")
+    : line("暂无执行记录。");
+}
+
+function renderNotify(config) {
+  state.notify = config;
+
+  if (!config?.hasWebhook) {
+    setBanner(elements.notifyBanner, "warning", "还没有配置企业微信群机器人 webhook。");
+  } else if (config?.enabled) {
+    setBanner(elements.notifyBanner, "success", "企业微信群通知已启用。");
+  } else {
+    setBanner(elements.notifyBanner, "neutral", "已保存 webhook，但当前未启用通知。");
+  }
+
+  elements.notifySummary.innerHTML = [
+    card("启用状态", config?.enabled ? "已启用" : "未启用"),
+    card("Webhook", config?.hasWebhook ? "已保存" : "未配置"),
+    card("真实打卡通知", config?.notifyOnSubmit ? "开启" : "关闭"),
+    card("轮询汇总通知", config?.notifyOnPolling ? "开启" : "关闭"),
+    card("失败 @all", config?.mentionAllOnFailure ? "开启" : "关闭"),
+    card("最后更新", config?.updatedAtText || "-"),
+  ].join("");
+
+  elements.notifyEnabled.checked = !!config?.enabled;
+  elements.notifyOnSubmit.checked = !!config?.notifyOnSubmit;
+  elements.notifyOnPolling.checked = !!config?.notifyOnPolling;
+  elements.notifyMentionAllOnFailure.checked = !!config?.mentionAllOnFailure;
+  elements.notifyWebhookUrl.value = "";
+  elements.notifyWebhookUrl.placeholder = config?.webhookMasked
+    ? `当前已保存：${config.webhookMasked}`
+    : "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...";
+
+  const rows = [];
+  if (config?.webhookMasked) rows.push(line(`<strong>当前 Webhook</strong><br /><span>${escapeHtml(config.webhookMasked)}</span>`));
+  if (config?.lastTest) {
+    rows.push(
+      line(
+        `<strong>最近测试</strong><br /><span>${escapeHtml(config.lastTest.sentAtText || "-")} / ${escapeHtml(
+          getNotifyStatusText(config.lastTest),
+        )}</span>`,
+        getNotifyTone(config.lastTest),
+      ),
+    );
+  }
+  if (config?.lastDelivery) {
+    rows.push(
+      line(
+        `<strong>最近投递</strong><br /><span>${escapeHtml(config.lastDelivery.sentAtText || "-")} / ${escapeHtml(
+          getNotifyStatusText(config.lastDelivery),
+        )}</span>`,
+        getNotifyTone(config.lastDelivery),
+      ),
+    );
+  }
+  elements.notifyDetails.innerHTML = rows.join("");
+}
+
+function renderAuthModal() {
+  const open = !!(state.auth.open && state.auth.account);
+  elements.authModal.classList.toggle("hidden", !open);
+  elements.authModal.setAttribute("aria-hidden", String(!open));
+  syncModalState();
+  if (!open) return;
+
+  const account = state.auth.account;
+  elements.authUserAccount.value = account.userAccount || "";
+  elements.authPassword.placeholder = account.hasPassword ? `留空则使用导入密码 ${account.passwordMasked || ""}` : "请输入密码";
+  elements.authSummary.innerHTML = [
+    card("账号状态", getSessionStatusText(account)),
+    card("密码来源", account.hasPassword ? `已导入 / ${account.passwordMasked || ""}` : "未导入，请手动输入"),
+    card("打卡照片", getPhotoStatusText(account)),
+    card("部门 / 姓名", `${account.department || "-"} / ${account.realName || "-"}`),
+    card("最近结果", account.lastRun?.summary || "暂无"),
+  ].join("");
+}
+
+function closeAuthModal() {
+  state.auth = { open: false, account: null, requestId: "" };
+  elements.authPassword.value = "";
+  elements.authCode.value = "";
+  elements.authCaptchaImage.removeAttribute("src");
+  renderAuthModal();
+}
+
+function buildFlowResultLines(status) {
+  const run = status?.lastRun;
+  if (!run) return [line("暂未拿到本次流程调测结果。", "detail-line-danger")];
+  const details = run.details || {};
+  const rows = [];
+  rows.push(line(`<strong>执行结果</strong><br /><span>${escapeHtml(run.slotLabel || "手动测试")} / ${escapeHtml(run.summary || buildPollingSummary(details))}</span>`, run.ok ? "detail-line-success" : "detail-line-danger"));
+  rows.push(line(`<strong>执行时间</strong><br /><span>${escapeHtml(run.finishedAtText || run.startedAtText || "-")}</span>`));
+  rows.push(line(`<strong>执行模式</strong><br /><span>${escapeHtml(run.executionModeLabel || "仅调测")}</span>`));
+  rows.push(
+    line(
+      `<strong>跳过明细</strong><br /><span>token 过期 ${escapeHtml(details.skippedExpiredCount || 0)} 个，无 token ${escapeHtml(
+        details.skippedMissingTokenCount || 0,
+      )} 个，照片异常 ${escapeHtml(details.skippedPhotoCount || 0)} 个</span>`,
+    ),
+  );
+  if (run.notification) {
+    rows.push(line(`<strong>企业微信</strong><br /><span>${escapeHtml(getNotifyStatusText(run.notification))}</span>`, getNotifyTone(run.notification)));
+  }
+  return rows;
+}
+
+function buildSubmitResultLines(result) {
+  const rows = [];
+  rows.push(
+    line(
+      `<strong>提交结果</strong><br /><span>${escapeHtml(result.userAccount || "-")} / ${escapeHtml(
+        result.productionWritePerformed ? "已触发真实打卡" : "未触发真实打卡",
+      )}</span>`,
+      result.productionWritePerformed ? "detail-line-success" : "detail-line-danger",
+    ),
+  );
+  if (result.photo) rows.push(line(`<strong>照片状态</strong><br /><span>${escapeHtml(result.photo.statusText || "-")}</span>`));
+  if (result.notification) {
+    rows.push(line(`<strong>企业微信</strong><br /><span>${escapeHtml(getNotifyStatusText(result.notification))}</span>`, getNotifyTone(result.notification)));
+  }
+  if (result.result?.submitResponse) {
+    rows.push(
+      line(
+        `<strong>服务端响应</strong><br /><span>${escapeHtml(result.result.submitResponse.retCode || "-")} / ${escapeHtml(
+          result.result.submitResponse.retMsg || "-",
+        )}</span>`,
+      ),
+    );
+  }
+  if (result.error) {
+    rows.push(line(`<strong>错误</strong><br /><span>${escapeHtml(result.error)}</span>`, "detail-line-danger"));
+  }
+  return rows;
+}
+
+function renderRunResult(result = state.run.result) {
+  state.run.result = result;
+  if (!result) {
+    elements.runResult.classList.add("hidden");
+    elements.runResult.innerHTML = "";
+    return;
+  }
+
+  const rows = result.kind === "flow" ? buildFlowResultLines(result.status) : buildSubmitResultLines(result);
+  elements.runResult.classList.remove("hidden");
+  elements.runResult.innerHTML = rows.join("");
+}
+
+function renderRunModal() {
+  const open = !!state.run.open;
+  elements.runModal.classList.toggle("hidden", !open);
+  elements.runModal.setAttribute("aria-hidden", String(!open));
+  syncModalState();
+  if (!open) return;
+
+  const reusableAccounts = getReusableAccounts();
+  if (!state.run.selected && reusableAccounts.length) {
+    state.run.selected = reusableAccounts[0].userAccount;
+  }
+  if (!reusableAccounts.some((account) => account.userAccount === state.run.selected)) {
+    state.run.selected = reusableAccounts[0]?.userAccount || "";
+  }
+
+  elements.runModeFlow.checked = state.run.mode === "flow";
+  elements.runModeSubmit.checked = state.run.mode === "submit";
+  elements.runSubmitFields.classList.toggle("hidden", state.run.mode !== "submit");
+  elements.btnRunConfirm.textContent = state.run.mode === "submit" ? "开始真实打卡" : "开始流程调测";
+
+  elements.runAccount.innerHTML = reusableAccounts.length
+    ? reusableAccounts
+        .map(
+          (account) =>
+            `<option value="${escapeHtml(account.userAccount)}" ${account.userAccount === state.run.selected ? "selected" : ""}>${escapeHtml(
+              `${account.userAccount} / ${account.realName || "未命名"}`,
+            )}</option>`,
+        )
+        .join("")
+    : '<option value="">当前没有可用于真实打卡的账号</option>';
+
+  if (state.run.mode === "flow") {
+    setBanner(elements.runBanner, "neutral", "流程调测会批量执行 dry-run，不会提交真实打卡。");
+    elements.runPhotoStatus.innerHTML = "";
+    elements.btnRunConfirm.disabled = false;
+  } else if (!reusableAccounts.length) {
+    setBanner(elements.runBanner, "warning", "当前没有可复用 token 的账号，无法执行真实打卡。");
+    elements.runPhotoStatus.innerHTML = line("请先为至少一个账号获取 token。", "detail-line-danger");
+    elements.btnRunConfirm.disabled = true;
+  } else {
+    const account = reusableAccounts.find((item) => item.userAccount === state.run.selected) || reusableAccounts[0];
+    state.run.selected = account.userAccount;
+    setBanner(elements.runBanner, "warning", "真实打卡会调用生产提交接口，并自动使用表格中的照片路径。");
+    elements.runPhotoStatus.innerHTML = [
+      line(`<strong>照片状态</strong><br /><span>${escapeHtml(getPhotoStatusText(account))}</span>`, account.photo?.exists ? "detail-line-success" : "detail-line-danger"),
+      line(`<strong>照片路径</strong><br /><span>${escapeHtml(account.photoPath || "未配置")}</span>`),
+      line(`<strong>账号状态</strong><br /><span>${escapeHtml(getSessionStatusText(account))}</span>`),
+    ].join("");
+    elements.btnRunConfirm.disabled = !account.photo?.exists;
+  }
+
+  renderRunResult(state.run.result);
+}
+
+function closeRunModal() {
+  state.run = { open: false, mode: "flow", selected: "", result: null };
+  renderRunModal();
+}
+
+function renderClearTokensModal() {
+  const open = !!state.clear.open;
+  elements.clearModal.classList.toggle("hidden", !open);
+  elements.clearModal.setAttribute("aria-hidden", String(!open));
+  syncModalState();
+  if (!open) return;
+
+  const registry = state.accounts || {};
+  elements.clearSummary.innerHTML = [
+    line(
+      `<strong>影响范围</strong><br /><span>共 ${escapeHtml(registry.totalCount || 0)} 个账号，其中可复用 token ${escapeHtml(
+        registry.reusableCount || 0,
+      )} 个，无 token ${escapeHtml(registry.missingTokenCount || 0)} 个。</span>`,
+      "detail-line-danger",
+    ),
+    line("<strong>确认提示</strong><br /><span>这个操作会清空所有账号的本地 token 缓存，并同时清掉当前主会话。</span>"),
+  ].join("");
+}
+
+function openClearTokensModal() {
+  state.clear.open = true;
+  renderClearTokensModal();
+}
+
+function closeClearTokensModal() {
+  state.clear.open = false;
+  renderClearTokensModal();
+}
+async function api(path, options = {}) {
+  const init = { cache: "no-store", ...options };
+  const headers = new Headers(init.headers || {});
+  if (init.body && !(init.body instanceof FormData) && typeof init.body !== "string") {
+    headers.set("Content-Type", "application/json");
+    init.body = JSON.stringify(init.body);
+  }
+  init.headers = headers;
+
+  const response = await fetch(path, init);
+  const text = await response.text();
+  let payload = {};
+  if (text) {
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = { raw: text };
+    }
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || response.statusText || "请求失败");
+  }
+  return payload;
+}
+
+async function loadConfig({ showOutput = false } = {}) {
+  const payload = await api("/api/config");
+  state.config = payload;
+  if (elements.configApi) elements.configApi.textContent = payload.baseApiUrl || "-";
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadCaptcha({ showOutput = false } = {}) {
+  setLoading(elements.btnForceCaptcha, true, "刷新中...");
+  setLoading(elements.btnCaptcha, true);
+  try {
+    const payload = await api("/api/captcha");
+    state.requestId = payload.requestId || "";
+    if (payload.imageDataUrl) elements.captchaImage.src = payload.imageDataUrl;
+    if (showOutput) setOutput(payload);
+    return payload;
+  } finally {
+    setLoading(elements.btnForceCaptcha, false);
+    setLoading(elements.btnCaptcha, false);
+  }
+}
+
+async function loadSession({ validate = false, refreshCaptcha = true, showOutput = false } = {}) {
+  const suffix = validate ? "?validate=1" : "";
+  const payload = await api(`/api/session${suffix}`);
+  renderSession(payload);
+  if ((!payload.cached || !payload.reusable) && refreshCaptcha) {
+    try {
+      await loadCaptcha();
+    } catch (error) {
+      setBanner(elements.sessionBanner, "error", `验证码获取失败：${getErrorMessage(error)}`);
+    }
+  }
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadAccounts({ showOutput = false } = {}) {
+  const payload = await api("/api/accounts");
+  renderAccounts(payload);
+  if (state.auth.open && state.auth.account) {
+    const updated = payload.accounts.find((item) => item.userAccount === state.auth.account.userAccount);
+    if (updated) {
+      state.auth.account = updated;
+      renderAuthModal();
+    }
+  }
+  if (state.run.open) renderRunModal();
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadPolling({ showOutput = false } = {}) {
+  const payload = await api("/api/clock-polling/status");
+  renderPolling(payload);
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadNotify({ showOutput = false } = {}) {
+  const payload = await api("/api/notify-config");
+  renderNotify(payload);
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadAuthCaptcha(userAccount, { showOutput = false } = {}) {
+  if (!userAccount) throw new Error("缺少账号");
+  setLoading(elements.btnAuthCaptcha, true);
+  setLoading(elements.btnAuthRefresh, true, "刷新中...");
+  setBanner(elements.authBanner, "neutral", "正在准备验证码...");
+  try {
+    const payload = await api(`/api/accounts/captcha?userAccount=${encodeURIComponent(userAccount)}`);
+    state.auth.requestId = payload.requestId || "";
+    if (payload.imageDataUrl) elements.authCaptchaImage.src = payload.imageDataUrl;
+    setBanner(elements.authBanner, "neutral", "请输入验证码后刷新该账号 token。");
+    if (showOutput) setOutput(payload);
+    return payload;
+  } finally {
+    setLoading(elements.btnAuthCaptcha, false);
+    setLoading(elements.btnAuthRefresh, false);
+  }
+}
+
+async function waitPollingFinished(previousStartedAt) {
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    await sleep(1500);
+    const payload = await loadPolling();
+    const lastStartedAt = payload?.lastRun?.startedAt || 0;
+    if (!payload.running && lastStartedAt && lastStartedAt !== previousStartedAt) {
+      return payload;
+    }
+  }
+  throw new Error("等待轮询执行结果超时，请稍后手动刷新。");
+}
+
+async function login(event) {
+  event.preventDefault();
+  if (!elements.agreePolicy.checked) {
+    setBanner(elements.sessionBanner, "warning", "请先勾选并同意《隐私政策》。");
+    return;
+  }
+
+  const userAccount = elements.userAccount.value.trim();
+  const password = elements.password.value.trim();
+  const verificationCode = elements.verificationCode.value.trim();
+  if (!userAccount || !password || !verificationCode || !state.requestId) {
+    setBanner(elements.sessionBanner, "warning", "请完整填写账号、密码、验证码，并确保验证码已经加载。");
+    return;
+  }
+
+  setLoading(elements.btnLogin, true, "登录中...");
+  try {
+    const payload = await api("/api/login", {
+      method: "POST",
+      body: { userAccount, password, verificationCode, requestId: state.requestId },
+    });
+    setOutput(payload);
+    await loadSession({ refreshCaptcha: false });
+    await loadAccounts();
+    setBanner(elements.sessionBanner, "success", "登录成功，已刷新当前会话。");
+    elements.verificationCode.value = "";
+    state.requestId = "";
+  } catch (error) {
+    setBanner(elements.sessionBanner, "error", getErrorMessage(error));
+    await loadCaptcha().catch(() => {});
+  } finally {
+    setLoading(elements.btnLogin, false);
+  }
+}
+
+async function reuseSession() {
+  setLoading(elements.btnReuse, true, "检查中...");
+  try {
+    const payload = await loadSession({ validate: true, refreshCaptcha: true, showOutput: true });
+    if (payload.cached && payload.reusable) {
+      setBanner(elements.sessionBanner, "success", "本地 token 仍然可复用。");
+    }
+  } catch (error) {
+    setBanner(elements.sessionBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnReuse, false);
+  }
+}
+
+async function logout() {
+  setLoading(elements.btnLogout, true, "清理中...");
+  try {
+    const payload = await api("/api/logout", { method: "POST" });
+    setOutput(payload);
+    await loadSession({ refreshCaptcha: true });
+    setBanner(elements.sessionBanner, "neutral", "当前主会话已清理。");
+  } catch (error) {
+    setBanner(elements.sessionBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnLogout, false);
+  }
+}
+
+function updateImportMetaFromFile() {
+  const file = elements.accountsFile.files?.[0];
+  state.importMeta = file
+    ? {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModifiedText: file.lastModified ? new Date(file.lastModified).toLocaleString("zh-CN", { hour12: false }) : "-",
+      }
+    : null;
+  renderImport();
+}
+
+async function importAccounts() {
+  const file = elements.accountsFile.files?.[0];
+  if (!file) {
+    setBanner(elements.importBanner, "warning", "请先选择 xlsx 文件。");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", file);
+  setLoading(elements.btnImportAccounts, true, "导入中...");
+  try {
+    const payload = await api("/api/accounts/import", { method: "POST", body: formData });
+    state.importSummary = payload.importSummary || null;
+    accountsListInitialized = false;
+    renderImport();
+    renderAccounts(payload.registry || { accounts: [] });
+    await loadPolling();
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.importBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnImportAccounts, false);
+  }
+}
+
+function findAccount(userAccount) {
+  return (state.accounts?.accounts || []).find((account) => account.userAccount === userAccount) || null;
+}
+
+async function toggleAccount(userAccount, enabled) {
+  const payload = await api("/api/accounts/toggle", { method: "POST", body: { userAccount, enabled } });
+  renderAccounts(payload.registry);
+  await loadPolling();
+  setOutput(payload);
+}
+
+async function removeAccount(userAccount) {
+  const ok = window.confirm(`确定删除账号 ${userAccount} 吗？`);
+  if (!ok) return;
+  const payload = await api("/api/accounts/remove", { method: "POST", body: { userAccount } });
+  accountsListInitialized = false;
+  await loadAccounts();
+  await loadPolling();
+  setOutput(payload);
+}
+
+async function openAuthModal(userAccount) {
+  const account = findAccount(userAccount);
+  if (!account) return;
+  state.auth = { open: true, account, requestId: "" };
+  elements.authPassword.value = "";
+  elements.authCode.value = "";
+  renderAuthModal();
+  try {
+    await loadAuthCaptcha(userAccount);
+  } catch (error) {
+    setBanner(elements.authBanner, "error", getErrorMessage(error));
+  }
+}
+
+async function submitAccountAuth() {
+  if (!state.auth.account) return;
+  const verificationCode = elements.authCode.value.trim();
+  if (!verificationCode || !state.auth.requestId) {
+    setBanner(elements.authBanner, "warning", "请先获取验证码并填写。");
+    return;
+  }
+
+  setLoading(elements.btnAuthSubmit, true, "获取中...");
+  try {
+    const payload = await api("/api/accounts/login", {
+      method: "POST",
+      body: {
+        userAccount: state.auth.account.userAccount,
+        password: elements.authPassword.value.trim(),
+        verificationCode,
+        requestId: state.auth.requestId,
+      },
+    });
+    setOutput(payload);
+    renderAccounts(payload.registry);
+    await loadPolling();
+    setBanner(elements.authBanner, "success", `${state.auth.account.userAccount} 的 token 已刷新。`);
+    elements.authCode.value = "";
+    state.auth.requestId = "";
+    window.setTimeout(() => {
+      closeAuthModal();
+    }, 500);
+  } catch (error) {
+    setBanner(elements.authBanner, "error", getErrorMessage(error));
+    await loadAuthCaptcha(state.auth.account.userAccount).catch(() => {});
+  } finally {
+    setLoading(elements.btnAuthSubmit, false);
+  }
+}
+
+async function refreshAllAccounts() {
+  setLoading(elements.btnRefreshAccounts, true, "刷新中...");
+  try {
+    const payload = await loadAccounts({ showOutput: true });
+    await loadPolling();
+    return payload;
+  } finally {
+    setLoading(elements.btnRefreshAccounts, false);
+  }
+}
+
+async function startPolling() {
+  setLoading(elements.btnStartPolling, true, "开启中...");
+  try {
+    const payload = await api("/api/clock-polling/start", { method: "POST" });
+    renderPolling(payload);
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnStartPolling, false);
+  }
+}
+
+async function stopPolling() {
+  setLoading(elements.btnStopPolling, true, "关闭中...");
+  try {
+    const payload = await api("/api/clock-polling/stop", { method: "POST" });
+    renderPolling(payload);
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnStopPolling, false);
+  }
+}
+
+async function toggleWeekendPolling() {
+  setLoading(elements.btnToggleWeekendPolling, true, "保存中...");
+  try {
+    const payload = await api("/api/clock-polling/weekends", {
+      method: "POST",
+      body: { allowWeekends: !state.polling?.allowWeekends },
+    });
+    renderPolling(payload);
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnToggleWeekendPolling, false);
+  }
+}
+
+async function savePollingMode() {
+  const executionMode = elements.pollingExecutionModeSubmit.checked ? "submit" : "dry-run";
+  setLoading(elements.btnSavePollingMode, true, "保存中...");
+  try {
+    const payload = await api("/api/clock-polling/mode", { method: "POST", body: { executionMode } });
+    renderPolling(payload);
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnSavePollingMode, false);
+  }
+}
+
+async function savePollingTimes() {
+  const timeOne = elements.pollingTimeOne.value;
+  const timeTwo = elements.pollingTimeTwo.value;
+  if (!timeOne || !timeTwo) {
+    setBanner(elements.pollingBanner, "warning", "请先填写两个打卡时间。");
+    return;
+  }
+
+  setLoading(elements.btnSavePollingTimes, true, "保存中...");
+  try {
+    const payload = await api("/api/clock-polling/times", {
+      method: "POST",
+      body: {
+        times: [timeOne, timeTwo],
+        randomDelayEnabled: !!elements.pollingRandomDelayEnabled.checked,
+      },
+    });
+    renderPolling(payload);
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnSavePollingTimes, false);
+  }
+}
+function openRunModal() {
+  state.run = {
+    open: true,
+    mode: "flow",
+    selected: getReusableAccounts()[0]?.userAccount || "",
+    result: null,
+  };
+  renderRunModal();
+}
+
+async function runNow() {
+  setLoading(elements.btnRunConfirm, true, "执行中...");
+  try {
+    if (state.run.mode === "flow") {
+      const previousStartedAt = state.polling?.activeRun?.startedAt || state.polling?.lastRun?.startedAt || 0;
+      const triggerPayload = await api("/api/clock-polling/test", { method: "POST" });
+      renderPolling(triggerPayload);
+      setBanner(elements.runBanner, "neutral", "流程调测已启动，正在等待执行完成...");
+      const finalStatus = await waitPollingFinished(previousStartedAt);
+      state.run.result = { kind: "flow", status: finalStatus };
+      renderRunModal();
+      await loadAccounts();
+      await loadNotify();
+      setOutput(finalStatus);
+      return;
+    }
+
+    if (!state.run.selected) {
+      setBanner(elements.runBanner, "warning", "请选择一个账号。");
+      return;
+    }
+
+    const payload = await api("/api/clock-polling/submit", {
+      method: "POST",
+      body: { userAccount: state.run.selected },
+    });
+    state.run.result = payload;
+    renderRunModal();
+    await loadAccounts();
+    await loadPolling();
+    await loadNotify();
+    setOutput(payload);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    setBanner(elements.runBanner, "error", message);
+    state.run.result =
+      state.run.mode === "flow"
+        ? { kind: "flow", status: { lastRun: { ok: false, slotLabel: "手动测试 dry-run", summary: message, details: {}, executionModeLabel: "仅调测" } } }
+        : { error: message, userAccount: state.run.selected, productionWritePerformed: false };
+    renderRunModal();
+  } finally {
+    setLoading(elements.btnRunConfirm, false);
+  }
+}
+
+async function clearAllTokens() {
+  setLoading(elements.btnClearConfirm, true, "清空中...");
+  try {
+    const payload = await api("/api/accounts/clear-tokens", { method: "POST" });
+    closeClearTokensModal();
+    await loadSession({ refreshCaptcha: true });
+    await loadAccounts();
+    await loadPolling();
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.clearBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnClearConfirm, false);
+  }
+}
+
+async function saveNotify() {
+  setLoading(elements.btnSaveNotify, true, "保存中...");
+  try {
+    const payload = await api("/api/notify-config", {
+      method: "POST",
+      body: {
+        webhookUrl: elements.notifyWebhookUrl.value.trim(),
+        enabled: !!elements.notifyEnabled.checked,
+        notifyOnSubmit: !!elements.notifyOnSubmit.checked,
+        notifyOnPolling: !!elements.notifyOnPolling.checked,
+        mentionAllOnFailure: !!elements.notifyMentionAllOnFailure.checked,
+      },
+    });
+    setOutput(payload);
+    await loadNotify();
+  } catch (error) {
+    setBanner(elements.notifyBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnSaveNotify, false);
+  }
+}
+
+async function testNotify() {
+  setLoading(elements.btnTestNotify, true, "发送中...");
+  try {
+    const payload = await api("/api/notify-test", { method: "POST" });
+    setOutput(payload);
+    await loadNotify();
+  } catch (error) {
+    setBanner(elements.notifyBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnTestNotify, false);
+  }
+}
+
+async function safeAutoRefresh() {
+  try {
+    await Promise.all([loadSession({ refreshCaptcha: false }), loadAccounts(), loadPolling(), loadNotify()]);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function handleAccountTableClick(event) {
+  const actionNode = event.target.closest("[data-action]");
+  if (!actionNode) return;
+  const row = actionNode.closest("[data-user-account]");
+  if (!row) return;
+  const userAccount = row.dataset.userAccount;
+  const account = findAccount(userAccount);
+  if (!userAccount || !account) return;
+
+  const action = actionNode.dataset.action;
+  if (action === "show-account") {
+    setOutput(account);
+    return;
+  }
+  if (action === "open-login") {
+    openAuthModal(userAccount).catch((error) => {
+      setBanner(elements.importBanner, "error", getErrorMessage(error));
+    });
+    return;
+  }
+  if (action === "toggle") {
+    toggleAccount(userAccount, !account.enabled).catch((error) => {
+      setBanner(elements.importBanner, "error", getErrorMessage(error));
+    });
+    return;
+  }
+  if (action === "remove") {
+    removeAccount(userAccount).catch((error) => {
+      setBanner(elements.importBanner, "error", getErrorMessage(error));
+    });
+  }
+}
+
+function bind() {
+  elements.loginForm.addEventListener("submit", login);
+  elements.btnCaptcha.addEventListener("click", () => loadCaptcha({ showOutput: true }).catch((error) => setBanner(elements.sessionBanner, "error", getErrorMessage(error))));
+  elements.btnForceCaptcha.addEventListener("click", () => loadCaptcha({ showOutput: true }).catch((error) => setBanner(elements.sessionBanner, "error", getErrorMessage(error))));
+  elements.btnReuse.addEventListener("click", () => reuseSession().catch((error) => setBanner(elements.sessionBanner, "error", getErrorMessage(error))));
+  elements.btnLogout.addEventListener("click", () => logout().catch((error) => setBanner(elements.sessionBanner, "error", getErrorMessage(error))));
+  elements.btnRefreshSession.addEventListener("click", () => loadSession({ validate: true, refreshCaptcha: true, showOutput: true }).catch((error) => setBanner(elements.sessionBanner, "error", getErrorMessage(error))));
+
+  elements.accountsFile.addEventListener("change", updateImportMetaFromFile);
+  elements.btnImportAccounts.addEventListener("click", () => importAccounts().catch((error) => setBanner(elements.importBanner, "error", getErrorMessage(error))));
+  elements.btnRefreshAccounts.addEventListener("click", () => refreshAllAccounts().catch((error) => setBanner(elements.importBanner, "error", getErrorMessage(error))));
+  elements.accountsTable.addEventListener("click", handleAccountTableClick);
+  elements.btnToggleAccountList.addEventListener("click", () => {
+    accountsListExpanded = !accountsListExpanded;
+    syncAccountList(state.accounts || { totalCount: 0 });
+  });
+  elements.btnClearAccountTokens.addEventListener("click", openClearTokensModal);
+
+  elements.btnRefreshPolling.addEventListener("click", () => loadPolling({ showOutput: true }).catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
+  elements.btnStartPolling.addEventListener("click", () => startPolling().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
+  elements.btnStopPolling.addEventListener("click", () => stopPolling().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
+  elements.btnToggleWeekendPolling.addEventListener("click", () => toggleWeekendPolling().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
+  elements.btnSavePollingMode.addEventListener("click", () => savePollingMode().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
+  elements.btnSavePollingTimes.addEventListener("click", () => savePollingTimes().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
+  elements.btnRunPollingTest.addEventListener("click", openRunModal);
+
+  elements.btnRefreshNotify.addEventListener("click", () => loadNotify({ showOutput: true }).catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
+  elements.btnSaveNotify.addEventListener("click", () => saveNotify().catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
+  elements.btnTestNotify.addEventListener("click", () => testNotify().catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
+
+  elements.btnAuthClose.addEventListener("click", closeAuthModal);
+  elements.btnAuthRefresh.addEventListener("click", () => {
+    if (!state.auth.account) return;
+    loadAuthCaptcha(state.auth.account.userAccount, { showOutput: true }).catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error)));
+  });
+  elements.btnAuthCaptcha.addEventListener("click", () => {
+    if (!state.auth.account) return;
+    loadAuthCaptcha(state.auth.account.userAccount, { showOutput: true }).catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error)));
+  });
+  elements.btnAuthSubmit.addEventListener("click", () => submitAccountAuth().catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error))));
+
+  elements.runModeFlow.addEventListener("change", () => {
+    state.run.mode = "flow";
+    state.run.result = null;
+    renderRunModal();
+  });
+  elements.runModeSubmit.addEventListener("change", () => {
+    state.run.mode = "submit";
+    state.run.result = null;
+    renderRunModal();
+  });
+  elements.runAccount.addEventListener("change", (event) => {
+    state.run.selected = event.target.value;
+    state.run.result = null;
+    renderRunModal();
+  });
+  elements.btnRunConfirm.addEventListener("click", () => runNow().catch((error) => setBanner(elements.runBanner, "error", getErrorMessage(error))));
+  elements.btnRunCancel.addEventListener("click", closeRunModal);
+  elements.btnRunClose.addEventListener("click", closeRunModal);
+
+  elements.btnClearConfirm.addEventListener("click", () => clearAllTokens().catch((error) => setBanner(elements.clearBanner, "error", getErrorMessage(error))));
+  elements.btnClearCancel.addEventListener("click", closeClearTokensModal);
+  elements.btnClearClose.addEventListener("click", closeClearTokensModal);
+
+  document.querySelectorAll(".modal-backdrop").forEach((node) =>
+    node.addEventListener("click", (event) => {
+      const action = event.currentTarget.dataset.action;
+      if (action === "close-account-auth") closeAuthModal();
+      if (action === "close-polling-run") closeRunModal();
+      if (action === "close-clear-tokens") closeClearTokensModal();
+    }),
+  );
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (state.auth.open) closeAuthModal();
+    if (state.run.open) closeRunModal();
+    if (state.clear.open) closeClearTokensModal();
+  });
+}
+
+async function boot() {
+  setOutput("正在读取接口数据...");
+  try {
+    await loadConfig();
+    await Promise.all([loadSession({ refreshCaptcha: true }), loadAccounts(), loadPolling(), loadNotify()]);
+    setOutput({
+      message: "前端已完成初始化。",
+      loadedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+      baseApiUrl: state.config?.baseApiUrl || "",
+    });
+  } catch (error) {
+    setOutput({ error: getErrorMessage(error) });
+    setBanner(elements.sessionBanner, "error", `页面初始化失败：${getErrorMessage(error)}`);
+  }
+
+  if (state.timer) window.clearInterval(state.timer);
+  state.timer = window.setInterval(() => {
+    safeAutoRefresh();
+  }, 15000);
+}
+
 bind();
 boot();

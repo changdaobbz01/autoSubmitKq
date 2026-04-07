@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>掌上考勤 - 多账号测试台</title>
-    <link rel="stylesheet" href="/styles.css?v=20260405-2145" />
+    <link rel="stylesheet" href="/styles.css?v=20260407-1730" />
   </head>
   <body>
     <div class="page-shell compact">
@@ -164,8 +164,14 @@
                 <input id="polling-time-2" type="time" step="60" />
               </label>
             </div>
+            <div class="polling-option-grid">
+              <label class="polling-option">
+                <input id="polling-random-delay-enabled" type="checkbox" />
+                <span>按时点随机顺延 1-5 分钟</span>
+              </label>
+            </div>
             <div class="button-row">
-              <button id="btn-save-polling-times" class="ghost-button" type="button">保存打卡时间</button>
+              <button id="btn-save-polling-times" class="ghost-button" type="button">保存时间与偏移</button>
             </div>
           </div>
           <div class="polling-layout">
@@ -347,6 +353,6 @@
       </section>
     </div>
 
-    <script type="module" src="/app.js?v=20260405-2145"></script>
+    <script type="module" src="/app.js?v=20260407-1730"></script>
   </body>
 </html>
