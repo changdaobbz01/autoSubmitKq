@@ -5,6 +5,7 @@ const state = {
   accounts: null,
   polling: null,
   notify: null,
+  autostart: null,
   timer: null,
   importMeta: null,
   importSummary: null,
@@ -60,6 +61,12 @@ const elements = {
   btnSavePollingTimes: $("#btn-save-polling-times"),
   btnRunPollingTest: $("#btn-run-polling-test"),
   btnStopPolling: $("#btn-stop-polling"),
+  autostartBanner: $("#autostart-banner"),
+  autostartSummary: $("#autostart-summary"),
+  autostartDetails: $("#autostart-details"),
+  autostartEnabled: $("#autostart-enabled"),
+  btnRefreshAutostart: $("#btn-refresh-autostart"),
+  btnSaveAutostart: $("#btn-save-autostart"),
   notifyBanner: $("#notify-banner"),
   notifySummary: $("#notify-summary"),
   notifyDetails: $("#notify-details"),
@@ -552,6 +559,46 @@ function renderNotify(config) {
   elements.notifyDetails.innerHTML = rows.join("");
 }
 
+function renderAutostart(config) {
+  state.autostart = config;
+
+  if (config?.supported === false) {
+    setBanner(elements.autostartBanner, "warning", config.statusText || "当前环境不支持开机自启动。");
+  } else if (config?.enabled) {
+    setBanner(elements.autostartBanner, "success", config.statusText || "已开启开机自启动。");
+  } else {
+    setBanner(elements.autostartBanner, "neutral", config?.statusText || "当前未开启开机自启动。");
+  }
+
+  elements.autostartSummary.innerHTML = [
+    card("当前状态", config?.enabled ? "已开启" : "未开启"),
+    card("启动方式", config?.modeText || "仅后台启动后端"),
+    card("运行模式", config?.runMode === "packaged" ? "打包版" : "源码模式"),
+    card("快捷启动器", config?.launcherExists ? "已就绪" : "未找到"),
+  ].join("");
+
+  elements.autostartEnabled.checked = !!config?.enabled;
+  elements.autostartEnabled.disabled = config?.supported === false;
+
+  const rows = [];
+  rows.push(line("<strong>生效范围</strong><br /><span>开机自启动只对当前这台电脑生效，换到其他电脑后需要重新开启。</span>"));
+  if (config?.shortcutPath) {
+    rows.push(line(`<strong>启动项路径</strong><br /><span>${escapeHtml(config.shortcutPath)}</span>`));
+  }
+  if (config?.launcherPath) {
+    rows.push(
+      line(
+        `<strong>后台启动脚本</strong><br /><span>${escapeHtml(config.launcherPath)}</span>`,
+        config?.launcherExists ? "detail-line-success" : "detail-line-danger",
+      ),
+    );
+  }
+  if (config?.target || config?.arguments) {
+    rows.push(line(`<strong>目标命令</strong><br /><span>${escapeHtml(`${config.target || ""} ${config.arguments || ""}`.trim() || "-")}</span>`));
+  }
+  elements.autostartDetails.innerHTML = rows.join("");
+}
+
 function renderAuthModal() {
   const open = !!(state.auth.open && state.auth.account);
   elements.authModal.classList.toggle("hidden", !open);
@@ -817,6 +864,13 @@ async function loadPolling({ showOutput = false } = {}) {
 async function loadNotify({ showOutput = false } = {}) {
   const payload = await api("/api/notify-config");
   renderNotify(payload);
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadAutostart({ showOutput = false } = {}) {
+  const payload = await api("/api/autostart");
+  renderAutostart(payload);
   if (showOutput) setOutput(payload);
   return payload;
 }
@@ -1187,6 +1241,24 @@ async function clearAllTokens() {
   }
 }
 
+async function saveAutostart() {
+  setLoading(elements.btnSaveAutostart, true, "保存中...");
+  try {
+    const payload = await api("/api/autostart", {
+      method: "POST",
+      body: {
+        enabled: !!elements.autostartEnabled.checked,
+      },
+    });
+    renderAutostart(payload);
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.autostartBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnSaveAutostart, false);
+  }
+}
+
 async function saveNotify() {
   setLoading(elements.btnSaveNotify, true, "保存中...");
   try {
@@ -1289,6 +1361,9 @@ function bind() {
   elements.btnSavePollingTimes.addEventListener("click", () => savePollingTimes().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
   elements.btnRunPollingTest.addEventListener("click", openRunModal);
 
+  elements.btnRefreshAutostart.addEventListener("click", () => loadAutostart({ showOutput: true }).catch((error) => setBanner(elements.autostartBanner, "error", getErrorMessage(error))));
+  elements.btnSaveAutostart.addEventListener("click", () => saveAutostart().catch((error) => setBanner(elements.autostartBanner, "error", getErrorMessage(error))));
+
   elements.btnRefreshNotify.addEventListener("click", () => loadNotify({ showOutput: true }).catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
   elements.btnSaveNotify.addEventListener("click", () => saveNotify().catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
   elements.btnTestNotify.addEventListener("click", () => testNotify().catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
@@ -1348,7 +1423,7 @@ async function boot() {
   setOutput("正在读取接口数据...");
   try {
     await loadConfig();
-    await Promise.all([loadSession({ refreshCaptcha: true }), loadAccounts(), loadPolling(), loadNotify()]);
+    await Promise.all([loadSession({ refreshCaptcha: true }), loadAccounts(), loadPolling(), loadAutostart(), loadNotify()]);
     setOutput({
       message: "前端已完成初始化。",
       loadedAt: new Date().toLocaleString("zh-CN", { hour12: false }),

@@ -33,6 +33,8 @@ from attendance_auth_client import (
 from account_registry import AccountRegistry
 from normal_clock_debug import DEFAULT_LATITUDE, DEFAULT_LONGITUDE, run_normal_clock_check
 from wecom_bot_notifier import WeComBotNotifier
+from windows_autostart import get_public_status as get_autostart_public_status
+from windows_autostart import set_enabled as set_autostart_enabled
 
 WEB_DIR = ROOT_DIR / "web"
 POLLING_STATE_PATH = PARENT_DIR / ".attendance_auth" / "clock_polling_state.json"
@@ -1304,6 +1306,9 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/notify-config":
             self._write_json(self.notifier.get_public_config())
             return
+        if parsed.path == "/api/autostart":
+            self._write_json(get_autostart_public_status())
+            return
         if parsed.path == "/api/session":
             self._handle_get_session(parsed.query)
             return
@@ -1359,6 +1364,9 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/notify-test":
             self._handle_post_notify_test()
+            return
+        if parsed.path == "/api/autostart":
+            self._handle_post_autostart()
             return
         if parsed.path == "/api/clock-polling/start":
             self._write_json(self.polling_scheduler.start())
@@ -1603,6 +1611,23 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
 
     def _handle_post_notify_test(self) -> None:
         payload = self.notifier.send_test_message()
+        self._write_json(payload)
+
+    def _handle_post_autostart(self) -> None:
+        body = self._read_json()
+        raw_enabled = body.get("enabled", False)
+        if isinstance(raw_enabled, str):
+            enabled = raw_enabled.strip().lower() in {"1", "true", "yes", "on"}
+        else:
+            enabled = bool(raw_enabled)
+        try:
+            payload = set_autostart_enabled(enabled)
+        except ValueError as exc:
+            self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        except RuntimeError as exc:
+            self._write_json({"error": str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
         self._write_json(payload)
 
     def _handle_post_clock_weekends(self) -> None:

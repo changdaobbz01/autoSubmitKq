@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>掌上考勤 - 多账号测试台</title>
-    <link rel="stylesheet" href="/styles.css?v=20260407-1730" />
+    <link rel="stylesheet" href="/styles.css?v=20260407-1835" />
   </head>
   <body>
     <div class="page-shell compact">
@@ -186,6 +186,32 @@
           </div>
         </section>
 
+        <section class="card autostart-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Autostart</p>
+              <h2>开机自启动</h2>
+            </div>
+            <button id="btn-refresh-autostart" class="ghost-button" type="button">检测当前电脑状态</button>
+          </div>
+          <div id="autostart-banner" class="session-banner neutral">正在读取开机自启动状态...</div>
+          <div id="autostart-summary" class="summary-grid"></div>
+          <div class="notify-option-grid">
+            <label class="notify-option">
+              <input id="autostart-enabled" type="checkbox" />
+              <span>登录 Windows 后仅后台启动后端</span>
+            </label>
+          </div>
+          <div id="autostart-details" class="detail-line-list"></div>
+          <div class="button-row">
+            <button id="btn-save-autostart" class="primary-button" type="button">保存自启动设置</button>
+          </div>
+          <div class="hint-text">
+            开启后只会启动后端服务，不会自动打开浏览器前端页面；需要查看页面时再手动打开 `http://127.0.0.1:8765`。
+            这个设置只对当前电脑生效，换到另一台电脑后需要再单独开启一次。
+          </div>
+        </section>
+
         <section class="card notify-card">
           <div class="card-head">
             <div>
@@ -353,6 +379,6 @@
       </section>
     </div>
 
-    <script type="module" src="/app.js?v=20260407-1730"></script>
+    <script type="module" src="/app.js?v=20260407-1835"></script>
   </body>
 </html>

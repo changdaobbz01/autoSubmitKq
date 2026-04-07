@@ -179,6 +179,7 @@ body {
 
 .accounts-card,
 .polling-card,
+.autostart-card,
 .notify-card,
 .data-card {
   grid-column: 1 / -1;
@@ -635,6 +636,7 @@ button:disabled {
 
 .import-card,
 .accounts-card,
+.autostart-card,
 .notify-card {
   grid-column: 1 / -1;
   width: 100%;
@@ -1014,6 +1016,7 @@ body.modal-open {
   .import-card,
   .accounts-card,
   .polling-card,
+  .autostart-card,
   .notify-card,
   .data-card {
     grid-column: 1 / -1;
