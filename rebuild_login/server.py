@@ -545,7 +545,9 @@ def shrink_clock_check_payload(result: dict[str, Any]) -> dict[str, Any]:
         "location": {
             "longitude": result.get("location", {}).get("longitude"),
             "latitude": result.get("location", {}).get("latitude"),
+            "configuredAddress": result.get("location", {}).get("configuredAddress"),
             "rangeAddress": result.get("location", {}).get("rangeAddress"),
+            "submitAddress": result.get("location", {}).get("submitAddress"),
             "inRange": result.get("location", {}).get("inRange"),
         },
         "faceModel": {
@@ -563,12 +565,22 @@ def shrink_clock_check_payload(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def get_clock_display_address(result: dict[str, Any]) -> str:
+    location = result.get("location") if isinstance(result.get("location"), dict) else {}
+    return str(
+        location.get("submitAddress")
+        or location.get("configuredAddress")
+        or location.get("rangeAddress")
+        or "\u672a\u89e3\u6790\u5230\u6807\u51c6\u5730\u5740"
+    )
+
+
 def summarize_clock_check(result: dict[str, Any]) -> str:
     in_range = bool(result.get("location", {}).get("inRange"))
     face_ready = bool(result.get("faceModel", {}).get("configured"))
     today_records = result.get("todayRecords", {}).get("retContent")
     record_count = len(today_records) if isinstance(today_records, list) else 0
-    range_address = result.get("location", {}).get("rangeAddress") or "未解析到标准地址"
+    range_address = get_clock_display_address(result)
     configured_photo = result.get("configuredPhoto") if isinstance(result.get("configuredPhoto"), dict) else {}
     parts = [
         configured_photo.get("statusText") or "未配置照片",
@@ -589,10 +601,130 @@ def summarize_clock_submit(result: dict[str, Any]) -> str:
     submit_response = result.get("submitResponse") if isinstance(result.get("submitResponse"), dict) else {}
     ret_code = str(submit_response.get("retCode") or "-")
     ret_msg = str(submit_response.get("retMsg") or "-")
-    range_address = result.get("location", {}).get("rangeAddress") or "未解析到标准地址"
+    range_address = get_clock_display_address(result)
     if is_clock_submit_success(result):
         return f"真实打卡成功 / {range_address} / {ret_msg}"
     return f"真实打卡失败 / {ret_code} / {ret_msg} / {range_address}"
+
+def resolve_account_clock_location(account: dict[str, Any]) -> dict[str, Any]:
+    location_state = account.get("location") if isinstance(account.get("location"), dict) else {}
+    configured_longitude = str(account.get("longitude") or location_state.get("longitude") or "").strip()
+    configured_latitude = str(account.get("latitude") or location_state.get("latitude") or "").strip()
+    configured_address = str(account.get("clockAddress") or location_state.get("clockAddress") or "").strip()
+    has_coordinates = bool(configured_longitude and configured_latitude)
+    has_custom_location = bool(configured_longitude or configured_latitude or configured_address)
+    missing_fields: list[str] = []
+    if not configured_longitude:
+        missing_fields.append("longitude")
+    if not configured_latitude:
+        missing_fields.append("latitude")
+    return {
+        "userAccount": str(account.get("userAccount") or "").strip(),
+        "realName": str(account.get("realName") or "").strip(),
+        "longitude": configured_longitude,
+        "latitude": configured_latitude,
+        "expectedAddress": configured_address,
+        "configured": has_custom_location,
+        "ready": has_coordinates,
+        "missingFields": missing_fields,
+        "source": "xlsx" if has_custom_location else "unset",
+    }
+
+
+def build_clock_location_profile(accounts: list[dict[str, Any]]) -> dict[str, Any]:
+    resolved_accounts = [
+        resolve_account_clock_location(account)
+        for account in accounts
+        if isinstance(account, dict) and str(account.get("userAccount") or "").strip()
+    ]
+    if not resolved_accounts:
+        return {
+            "mode": "empty",
+            "source": "unset",
+            "longitude": "",
+            "latitude": "",
+            "expectedAddress": "",
+            "accountCount": 0,
+            "uniqueLocationCount": 0,
+            "configuredAccountCount": 0,
+            "missingLocationCount": 0,
+            "summaryText": "\u6682\u65e0\u8d26\u53f7\u4f4d\u7f6e\u914d\u7f6e",
+            "accounts": [],
+        }
+
+    unique_locations = {
+        (item["longitude"], item["latitude"], item["expectedAddress"])
+        for item in resolved_accounts
+        if item["ready"]
+    }
+    configured_account_count = sum(1 for item in resolved_accounts if item["ready"])
+    missing_location_count = len(resolved_accounts) - configured_account_count
+    primary = dict(next((item for item in resolved_accounts if item["ready"]), resolved_accounts[0]))
+
+    if not unique_locations:
+        summary_text = f"\u5df2\u5bfc\u5165 {len(resolved_accounts)} \u4e2a\u8d26\u53f7\uff0c\u4f46\u8fd8\u6ca1\u6709\u53ef\u7528\u7684\u7ecf\u7eac\u5ea6\u914d\u7f6e"
+        return {
+            **primary,
+            "mode": "missing",
+            "source": "unset",
+            "accountCount": len(resolved_accounts),
+            "uniqueLocationCount": 0,
+            "configuredAccountCount": 0,
+            "missingLocationCount": missing_location_count,
+            "summaryText": summary_text,
+            "accounts": resolved_accounts,
+        }
+
+    if len(unique_locations) == 1 and configured_account_count == len(resolved_accounts):
+        if len(resolved_accounts) > 1:
+            summary_text = f"{len(resolved_accounts)} \u4e2a\u8d26\u53f7\u5171\u7528\u540c\u4e00\u5957\u8868\u683c\u4f4d\u7f6e"
+        else:
+            summary_text = "\u5f53\u524d\u8d26\u53f7\u6309\u8868\u683c\u4f4d\u7f6e\u6267\u884c"
+        return {
+            **primary,
+            "mode": "uniform",
+            "accountCount": len(resolved_accounts),
+            "uniqueLocationCount": 1,
+            "configuredAccountCount": configured_account_count,
+            "missingLocationCount": 0,
+            "summaryText": summary_text,
+            "accounts": resolved_accounts,
+        }
+
+    if len(unique_locations) == 1:
+        if missing_location_count:
+            summary_text = (
+                f"\u5df2\u6309\u8868\u683c\u5e94\u7528 {configured_account_count} "
+                f"\u4e2a\u8d26\u53f7\u4f4d\u7f6e\uff0c{missing_location_count} \u4e2a\u8d26\u53f7\u5c1a\u672a\u914d\u7f6e\u7ecf\u7eac\u5ea6"
+            )
+        else:
+            summary_text = "\u5df2\u914d\u7f6e\u4e00\u5957\u8868\u683c\u4f4d\u7f6e\uff0c\u5176\u4ed6\u8d26\u53f7\u4ecd\u672a\u914d\u7f6e"
+        return {
+            **primary,
+            "mode": "uniform",
+            "accountCount": len(resolved_accounts),
+            "uniqueLocationCount": 1,
+            "configuredAccountCount": configured_account_count,
+            "missingLocationCount": missing_location_count,
+            "summaryText": summary_text,
+            "accounts": resolved_accounts,
+        }
+
+    summary_text = f"\u5df2\u6309\u8d26\u53f7\u4f7f\u7528 {len(unique_locations)} \u5957\u4f4d\u7f6e\u914d\u7f6e"
+    if missing_location_count:
+        summary_text += f"\uff0c\u5176\u4e2d {missing_location_count} \u4e2a\u8d26\u53f7\u5c1a\u672a\u914d\u7f6e\u7ecf\u7eac\u5ea6"
+
+    return {
+        **primary,
+        "mode": "per-account",
+        "source": "xlsx",
+        "accountCount": len(resolved_accounts),
+        "uniqueLocationCount": len(unique_locations),
+        "configuredAccountCount": configured_account_count,
+        "missingLocationCount": missing_location_count,
+        "summaryText": summary_text,
+        "accounts": resolved_accounts,
+    }
 
 
 def try_recover_gbk_mojibake(value: Any) -> Any:
@@ -816,6 +948,7 @@ class ClockDryRunScheduler:
 
         registry_summary = self.account_registry.summarize_registry()
         enabled_accounts = [item for item in registry_summary["accounts"] if item.get("enabled")]
+        location_profile = build_clock_location_profile(enabled_accounts or registry_summary["accounts"])
         preview_run_at, preview_slot = compute_next_polling_slot(
             allow_weekends=allow_weekends,
             slots=slots,
@@ -858,11 +991,7 @@ class ClockDryRunScheduler:
             "activeRun": active_run,
             "lastRun": last_run,
             "recentRuns": recent_runs,
-            "locationProfile": {
-                "longitude": DEFAULT_LONGITUDE,
-                "latitude": DEFAULT_LATITUDE,
-                "expectedAddress": "武汉-航天花园302栋2单元801室",
-            },
+            "locationProfile": location_profile,
             "accountsOverview": {
                 "totalCount": registry_summary["totalCount"],
                 "enabledCount": registry_summary["enabledCount"],
@@ -957,6 +1086,7 @@ class ClockDryRunScheduler:
         skipped_expired_count = 0
         skipped_missing_count = 0
         skipped_photo_count = 0
+        skipped_location_count = 0
         scheduled_account_plans = [
             dict(item)
             for item in due_run.get("accountPlans", [])
@@ -1013,6 +1143,7 @@ class ClockDryRunScheduler:
             client = self.account_registry.build_auth_client(account)
             session_state = account.get("session") or {}
             photo_state = account.get("photo") if isinstance(account.get("photo"), dict) else {}
+            clock_location = resolve_account_clock_location(account)
             account_schedule = dict(account_plan) if account_plan else None
             try:
                 if not session_state.get("reusable"):
@@ -1046,6 +1177,23 @@ class ClockDryRunScheduler:
                         "summary": f'{photo_state.get("statusText") or "未配置照片"}，已跳过本次轮询',
                         "details": {"mode": execution_mode, "photo": photo_state, "schedule": account_schedule},
                     }
+                elif not clock_location.get("ready"):
+                    skipped_count += 1
+                    skipped_location_count += 1
+                    account_run = {
+                        "userAccount": user_account,
+                        "realName": account.get("realName") or "",
+                        "ok": False,
+                        "skipped": True,
+                        "skipReason": "location",
+                        "summary": "未配置打卡经纬度，已跳过本次轮询",
+                        "details": {
+                            "mode": execution_mode,
+                            "photo": photo_state,
+                            "schedule": account_schedule,
+                            "locationProfile": clock_location,
+                        },
+                    }
                 else:
                     submit_mode = execution_mode == "submit"
                     image_path = (
@@ -1055,12 +1203,14 @@ class ClockDryRunScheduler:
                     )
                     result = run_normal_clock_check(
                         client,
-                        longitude=DEFAULT_LONGITUDE,
-                        latitude=DEFAULT_LATITUDE,
+                        longitude=clock_location["longitude"],
+                        latitude=clock_location["latitude"],
+                        address=clock_location["expectedAddress"],
                         image=image_path,
                         submit=submit_mode,
                     )
                     result["configuredPhoto"] = photo_state
+                    result["configuredLocation"] = clock_location
                     if submit_mode:
                         submit_ok = is_clock_submit_success(result)
                         account_details = shrink_clock_check_payload(result)
@@ -1071,6 +1221,7 @@ class ClockDryRunScheduler:
                                 "productionWritePerformed": bool(result.get("productionWritePerformed")),
                                 "photo": photo_state,
                                 "schedule": account_schedule,
+                                "locationProfile": clock_location,
                             }
                         )
 
@@ -1115,6 +1266,7 @@ class ClockDryRunScheduler:
                         account_details["mode"] = execution_mode
                         account_details["photo"] = photo_state
                         account_details["schedule"] = account_schedule
+                        account_details["locationProfile"] = clock_location
                         account_run = {
                             "userAccount": user_account,
                             "realName": account.get("realName") or "",
@@ -1189,6 +1341,7 @@ class ClockDryRunScheduler:
                 "skippedExpiredCount": skipped_expired_count,
                 "skippedMissingTokenCount": skipped_missing_count,
                 "skippedPhotoCount": skipped_photo_count,
+                "skippedLocationCount": skipped_location_count,
                 "accounts": account_runs,
             },
         }
@@ -1729,15 +1882,24 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             image_path = Path(str(photo_state.get("path") or account.get("photoPath") or "")).expanduser()
 
         client = self.account_registry.build_auth_client(account)
+        clock_location = resolve_account_clock_location(account)
+        if not clock_location.get("ready"):
+            self._write_json(
+                {"error": f"{user_account} 未配置打卡经纬度，请先导入包含地址、纬度、经度的 xlsx。"},
+                status=HTTPStatus.BAD_REQUEST,
+            )
+            return
         try:
             result = run_normal_clock_check(
                 client,
-                longitude=DEFAULT_LONGITUDE,
-                latitude=DEFAULT_LATITUDE,
+                longitude=clock_location["longitude"],
+                latitude=clock_location["latitude"],
+                address=clock_location["expectedAddress"],
                 image=image_path,
                 submit=True,
             )
             result["configuredPhoto"] = photo_state
+            result["configuredLocation"] = clock_location
         except (AuthError, Exception) as exc:  # noqa: BLE001
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
@@ -1760,6 +1922,7 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
                 "submitResponse": result.get("submitResponse"),
                 "photo": photo_state,
                 "imageSource": image_source,
+                "location": clock_location,
             },
         }
         notification_payload: dict[str, Any] | None = None

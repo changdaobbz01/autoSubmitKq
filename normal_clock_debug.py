@@ -9,8 +9,8 @@ from typing import Any, Optional
 
 from attendance_auth_client import ApiError, AttendanceAuthClient, AuthError
 
-DEFAULT_LONGITUDE = "114.24549825716642"
-DEFAULT_LATITUDE = "30.608913948312445"
+DEFAULT_LONGITUDE = ""
+DEFAULT_LATITUDE = ""
 
 
 def _print_json(payload: Any) -> None:
@@ -38,6 +38,7 @@ def run_normal_clock_check(
     *,
     longitude: str = DEFAULT_LONGITUDE,
     latitude: str = DEFAULT_LATITUDE,
+    address: Optional[str] = None,
     today: Optional[str] = None,
     image: Optional[Path] = None,
     submit: bool = False,
@@ -45,6 +46,10 @@ def run_normal_clock_check(
 ) -> dict[str, Any]:
     token = _require_cached_session(client)
     today = today or date.today().isoformat()
+    longitude = str(longitude or "").strip()
+    latitude = str(latitude or "").strip()
+    if not longitude or not latitude:
+        raise ValueError("未配置打卡经纬度，请先通过 xlsx 导入纬度和经度。")
 
     model_payload = client.call_api(
         path="/attendanceImage/searchModel",
@@ -67,6 +72,8 @@ def run_normal_clock_check(
 
     has_face_model = bool(model_payload.get("retContent"))
     range_address = address_payload.get("retContent") or ""
+    configured_address = str(address or "").strip()
+    submit_address = None if no_address else (configured_address or range_address or None)
 
     result: dict[str, Any] = {
         "mode": "submit" if submit else "dry-run",
@@ -74,7 +81,9 @@ def run_normal_clock_check(
         "location": {
             "longitude": longitude,
             "latitude": latitude,
+            "configuredAddress": configured_address,
             "rangeAddress": range_address,
+            "submitAddress": submit_address,
             "inRange": bool(range_address),
             "signAddressResponse": _response_summary(address_payload),
         },
@@ -93,9 +102,9 @@ def run_normal_clock_check(
             "addressRecommended": bool(range_address),
             "canBypassH5Guard": False,
             "notes": [
-                "当前 H5 明确会拦截未录入人脸或不在考勤范围的场景。",
-                "接口层已确认 imgPath 是硬依赖，address 建议传。",
-                "目前没有安全证据证明服务端完全不做人脸校验，因此不要把“可绕过”当成定论。",
+                "当前 H5 会拦截未录入人脸或不在考勤范围内的场景。",
+                "接口层已确认 imgPath 是硬依赖，address 建议一并传入。",
+                "目前没有安全证据能证明服务端完全不做人脸校验，因此不要把“可绕过”当成定论。",
             ],
         },
     }
@@ -120,8 +129,8 @@ def run_normal_clock_check(
         submit_body: dict[str, Any] = {}
         if upload_path:
             submit_body["imgPath"] = upload_path
-        if range_address and not no_address:
-            submit_body["address"] = range_address
+        if submit_address:
+            submit_body["address"] = submit_address
         result["wouldSubmit"] = submit_body
 
         if submit:
@@ -142,7 +151,7 @@ def run_normal_clock_check(
         }
         result["wouldSubmit"] = {
             "imgPath": None,
-            "address": None if no_address else range_address or None,
+            "address": submit_address,
         }
 
     return result
@@ -150,7 +159,7 @@ def run_normal_clock_check(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="正常打卡调试脚本。默认只做读取和图片上传，不会调用真实打卡写接口。",
+        description="正常打卡调试脚本。默认只读取状态和上传图片，不会直接写入真实打卡记录。",
     )
     parser.add_argument(
         "--image",
@@ -160,22 +169,22 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--longitude",
         default=DEFAULT_LONGITUDE,
-        help="普通经度。默认使用当前已验证过的航天花园坐标。",
+        help="普通经度。未提供时不会再使用内置固定坐标。",
     )
     parser.add_argument(
         "--latitude",
         default=DEFAULT_LATITUDE,
-        help="普通纬度。默认使用当前已验证过的航天花园坐标。",
+        help="普通纬度。未提供时不会再使用内置固定坐标。",
     )
     parser.add_argument(
         "--today",
         default=date.today().isoformat(),
-        help="要查询的打卡日期，格式 YYYY-MM-DD。",
+        help="要查询的打卡日期，格式为 YYYY-MM-DD。",
     )
     parser.add_argument(
         "--submit",
         action="store_true",
-        help="显式执行 createSignRecord。未传时只输出 wouldSubmit，不会落生产记录。",
+        help="显式执行 createSignRecord。未传时只输出 wouldSubmit，不会落真实记录。",
     )
     parser.add_argument(
         "--no-address",
@@ -202,7 +211,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         _print_json(result)
         return 0
-    except (AuthError, ApiError) as exc:
+    except (AuthError, ApiError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 

@@ -72,6 +72,30 @@ HEADER_ALIASES = {
         "\u56fe\u7247\u5730\u5740",
         "\u6253\u5361\u7167\u7247",
     },
+    "clockAddress": {
+        "clockaddress",
+        "signaddress",
+        "address",
+        "addressinfo",
+        "locationaddress",
+        "\u6253\u5361\u5730\u5740",
+        "\u6253\u5361\u5730\u5740\u4fe1\u606f",
+        "\u5730\u5740",
+        "\u5730\u5740\u4fe1\u606f",
+    },
+    "latitude": {
+        "latitude",
+        "lat",
+        "\u7ef4\u5ea6",
+        "\u7eac\u5ea6",
+    },
+    "longitude": {
+        "longitude",
+        "lng",
+        "lon",
+        "\u7ecf\u5ea6",
+        "\u7d93\u5ea6",
+    },
 }
 
 
@@ -162,6 +186,9 @@ class ImportedAccount:
     enabled: bool
     note: str
     photo_path: str
+    clock_address: str
+    latitude: str
+    longitude: str
     row_number: int
 
 
@@ -236,6 +263,9 @@ class AccountRegistry:
                     enabled=normalize_bool(row[header_map["enabled"]]) if "enabled" in header_map else True,
                     note=self._read_cell(row, header_map, "note"),
                     photo_path=self._read_cell(row, header_map, "photoPath"),
+                    clock_address=self._read_cell(row, header_map, "clockAddress"),
+                    latitude=self._read_cell(row, header_map, "latitude"),
+                    longitude=self._read_cell(row, header_map, "longitude"),
                     row_number=row_number,
                 )
             )
@@ -275,6 +305,9 @@ class AccountRegistry:
             old_enabled = bool(existing.get("enabled", True)) if existing else True
             old_note = str(existing.get("note") or "")
             old_photo_path = str(existing.get("photoPath") or "")
+            old_clock_address = str(existing.get("clockAddress") or "")
+            old_latitude = str(existing.get("latitude") or "")
+            old_longitude = str(existing.get("longitude") or "")
 
             next_password = imported.password or old_password
             next_real_name = imported.real_name or old_real_name
@@ -282,6 +315,9 @@ class AccountRegistry:
             next_enabled = imported.enabled
             next_note = imported.note
             next_photo_path = imported.photo_path or old_photo_path
+            next_clock_address = imported.clock_address or old_clock_address
+            next_latitude = imported.latitude or old_latitude
+            next_longitude = imported.longitude or old_longitude
 
             updated = {
                 **existing,
@@ -292,6 +328,9 @@ class AccountRegistry:
                 "enabled": next_enabled,
                 "note": next_note,
                 "photoPath": next_photo_path,
+                "clockAddress": next_clock_address,
+                "latitude": next_latitude,
+                "longitude": next_longitude,
                 "updatedAt": now,
             }
             if "createdAt" not in updated:
@@ -305,6 +344,12 @@ class AccountRegistry:
                     changed_fields.append("password")
                 if old_photo_path != next_photo_path:
                     changed_fields.append("photoPath")
+                if old_clock_address != next_clock_address:
+                    changed_fields.append("clockAddress")
+                if old_latitude != next_latitude:
+                    changed_fields.append("latitude")
+                if old_longitude != next_longitude:
+                    changed_fields.append("longitude")
                 if old_real_name != next_real_name:
                     changed_fields.append("realName")
                 if old_department != next_department:
@@ -357,10 +402,17 @@ class AccountRegistry:
         ready_photo_count = sum(1 for item in imported_account_summaries if item.get("photo", {}).get("exists"))
         password_changed_count = sum(1 for item in merged_change_details if "password" in item["changedFields"])
         photo_path_changed_count = sum(1 for item in merged_change_details if "photoPath" in item["changedFields"])
+        location_changed_count = sum(
+            1
+            for item in merged_change_details
+            if any(field in item["changedFields"] for field in ("clockAddress", "latitude", "longitude"))
+        )
         if password_changed_count:
             warnings.append(f"\u540c\u8d26\u53f7\u5bc6\u7801\u5df2\u66f4\u65b0 {password_changed_count} \u4e2a\u3002")
         if photo_path_changed_count:
             warnings.append(f"\u540c\u8d26\u53f7\u7167\u7247\u8def\u5f84\u5df2\u66f4\u65b0 {photo_path_changed_count} \u4e2a\u3002")
+        if location_changed_count:
+            warnings.append(f"\u540c\u8d26\u53f7\u7684\u6253\u5361\u5730\u5740\u6216\u7ecf\u7eac\u5ea6\u5df2\u66f4\u65b0 {location_changed_count} \u4e2a\u3002")
 
         return {
             "importedCount": len(latest_import_by_account),
@@ -370,6 +422,7 @@ class AccountRegistry:
             "mergedChangeDetails": merged_change_details,
             "passwordChangedCount": password_changed_count,
             "photoPathChangedCount": photo_path_changed_count,
+            "locationChangedCount": location_changed_count,
             "duplicateAccountCount": len(duplicate_accounts_in_file),
             "duplicateAccountsInFile": duplicate_accounts_in_file,
             "mergedAccounts": merged_accounts,
@@ -506,6 +559,9 @@ class AccountRegistry:
         user_account = str(account.get("userAccount") or "").strip()
         password = str(account.get("password") or "")
         photo_path = str(account.get("photoPath") or "").strip()
+        clock_address = str(account.get("clockAddress") or "").strip()
+        latitude = str(account.get("latitude") or "").strip()
+        longitude = str(account.get("longitude") or "").strip()
 
         session_store = SessionStore(self.get_session_path(user_account))
         client = AttendanceAuthClient(session_store=session_store)
@@ -558,6 +614,15 @@ class AccountRegistry:
             "session": session_payload,
             "photo": photo_state,
             "photoPath": photo_state["path"] or photo_path,
+            "clockAddress": clock_address,
+            "latitude": latitude,
+            "longitude": longitude,
+            "location": {
+                "configured": bool(clock_address or latitude or longitude),
+                "clockAddress": clock_address,
+                "latitude": latitude,
+                "longitude": longitude,
+            },
             "lastRun": account.get("lastRun") if isinstance(account.get("lastRun"), dict) else None,
             "createdAt": account.get("createdAt"),
             "updatedAt": account.get("updatedAt"),

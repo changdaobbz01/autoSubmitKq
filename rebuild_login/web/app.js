@@ -4,6 +4,7 @@ const state = {
   session: null,
   accounts: null,
   polling: null,
+  pollingAction: null,
   notify: null,
   autostart: null,
   timer: null,
@@ -47,6 +48,7 @@ const elements = {
   btnClearAccountTokens: $("#btn-clear-account-tokens"),
   pollingBanner: $("#polling-banner"),
   pollingSummary: $("#polling-summary"),
+  pollingActionFeedback: $("#polling-action-feedback"),
   pollingCurrent: $("#polling-current"),
   pollingHistory: $("#polling-history"),
   pollingExecutionModeDryRun: $("#polling-execution-mode-dry-run"),
@@ -144,10 +146,43 @@ function setOutput(value) {
   elements.output.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
+function formatLocalDateTime(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toLocaleString("zh-CN", { hour12: false });
+}
+
 function setBanner(node, tone, text) {
   if (!node) return;
   node.className = `session-banner ${tone}`;
   node.textContent = text;
+}
+
+function getPollingActionToneClass(tone = "neutral") {
+  if (tone === "success") return "detail-line-success";
+  if (tone === "error") return "detail-line-danger";
+  return "detail-line-neutral";
+}
+
+function renderPollingActionFeedback() {
+  if (!elements.pollingActionFeedback) return;
+  const feedback = state.pollingAction;
+  if (!feedback?.message) {
+    elements.pollingActionFeedback.innerHTML = line("最近一次操作结果会显示在这里。", "detail-line-neutral");
+    return;
+  }
+  elements.pollingActionFeedback.innerHTML = line(
+    `<strong>最近一次操作</strong><br /><span>${escapeHtml(feedback.updatedAtText || "-")} / ${escapeHtml(feedback.message)}</span>`,
+    getPollingActionToneClass(feedback.tone),
+  );
+}
+
+function setPollingActionFeedback(message, tone = "neutral") {
+  state.pollingAction = {
+    message,
+    tone,
+    updatedAtText: formatLocalDateTime(),
+  };
+  renderPollingActionFeedback();
 }
 
 function setLoading(button, loading, text = "处理中...") {
@@ -165,6 +200,25 @@ function setLoading(button, loading, text = "处理中...") {
   button.classList.remove("is-loading");
   button.removeAttribute("aria-busy");
   if (!hasImage && button.dataset.originalText) button.textContent = button.dataset.originalText;
+}
+
+function setButtonText(button, text) {
+  if (!button) return;
+  if (button.querySelector("img")) return;
+  button.dataset.originalText = text;
+  if (!button.classList.contains("is-loading")) button.textContent = text;
+}
+
+function setButtonState(button, { text, disabled = false, current = false, title = "" } = {}) {
+  if (!button) return;
+  if (typeof text === "string") setButtonText(button, text);
+  if (!button.classList.contains("is-loading")) button.disabled = disabled;
+  button.classList.toggle("is-current", !!current);
+  if (title) {
+    button.title = title;
+  } else {
+    button.removeAttribute("title");
+  }
 }
 
 function syncModalState() {
@@ -205,6 +259,62 @@ function getPhotoStatusText(account) {
   return account?.photo?.statusText || "未配置照片";
 }
 
+function getAccountLocation(account) {
+  const location = account?.location || {};
+  return {
+    clockAddress: location.clockAddress || account?.clockAddress || "",
+    longitude: location.longitude || account?.longitude || "",
+    latitude: location.latitude || account?.latitude || "",
+  };
+}
+
+function getAccountLocationText(account) {
+  const location = getAccountLocation(account);
+  const address = location.clockAddress || "\u672a\u914d\u7f6e\u5730\u5740";
+  const coordinates =
+    location.longitude && location.latitude
+      ? `${location.longitude} / ${location.latitude}`
+      : "\u672a\u914d\u7f6e\u7ecf\u7eac\u5ea6";
+  return `${address} / ${coordinates}`;
+}
+
+function buildPollingLocationLines(locationProfile) {
+  if (!locationProfile) return [];
+
+  const result = [];
+  if (locationProfile.summaryText) {
+    result.push(line(`\u4f4d\u7f6e\u914d\u7f6e\uff1a${escapeHtml(locationProfile.summaryText)}`));
+  }
+
+  if (locationProfile.mode === "per-account") {
+    const accounts = Array.isArray(locationProfile.accounts) ? locationProfile.accounts : [];
+    const previewAccounts = accounts.slice(0, 3);
+    if (previewAccounts.length) {
+      result.push(
+        line(
+          `\u8d26\u53f7\u4f4d\u7f6e\uff1a${escapeHtml(
+            previewAccounts
+              .map(
+                (account) =>
+                  `${account.userAccount || "-"} ${account.longitude || "-"} / ${account.latitude || "-"} / ${account.expectedAddress || "-"}`,
+              )
+              .join("\uff1b"),
+          )}`,
+        ),
+      );
+    }
+    const remainingCount = accounts.length - previewAccounts.length;
+    if (remainingCount > 0) {
+      result.push(line(`\u5176\u4f59 ${escapeHtml(remainingCount)} \u4e2a\u8d26\u53f7\u7ee7\u7eed\u6309\u5404\u81ea\u8868\u683c\u4f4d\u7f6e\u6267\u884c`));
+    }
+    return result;
+  }
+
+  result.push(line(`\u8f6e\u8be2\u5750\u6807\uff1a${escapeHtml(locationProfile.longitude || "-")} / ${escapeHtml(locationProfile.latitude || "-")}`));
+  result.push(line(`\u8f6e\u8be2\u5730\u5740\uff1a${escapeHtml(locationProfile.expectedAddress || "-")}`));
+  return result;
+}
+
 function getNotifyStatusText(payload) {
   return payload?.statusText || "尚未触发";
 }
@@ -218,6 +328,112 @@ function getNotifyTone(payload) {
 
 function getReusableAccounts() {
   return (state.accounts?.accounts || []).filter((account) => account.enabled && account.session?.reusable);
+}
+
+function getPollingModeText(executionMode) {
+  return executionMode === "submit" ? "真实提交" : "仅调测";
+}
+
+function getPollingTimes(polling = state.polling) {
+  const slots = Array.isArray(polling?.slots) ? polling.slots : [];
+  return [slots[0]?.time || "", slots[1]?.time || ""];
+}
+
+function getPollingRandomDelayText(enabled) {
+  return enabled ? "随机顺延已开启" : "随机顺延已关闭";
+}
+
+function isPollingModeDirty() {
+  const currentMode = state.polling?.executionMode || "dry-run";
+  const selectedMode = elements.pollingExecutionModeSubmit.checked ? "submit" : "dry-run";
+  return currentMode !== selectedMode;
+}
+
+function isPollingTimesDirty() {
+  const [currentTimeOne, currentTimeTwo] = getPollingTimes();
+  return (
+    currentTimeOne !== (elements.pollingTimeOne?.value || "") ||
+    currentTimeTwo !== (elements.pollingTimeTwo?.value || "") ||
+    !!state.polling?.randomDelayEnabled !== !!elements.pollingRandomDelayEnabled?.checked
+  );
+}
+
+function syncPollingControls() {
+  const polling = state.polling;
+  const hasPollingState = !!polling;
+  const enabled = !!polling?.enabled;
+  const running = !!polling?.running;
+  const enabledAccountsCount = polling?.accountsOverview?.enabledCount || 0;
+  const hasEnabledAccounts = enabledAccountsCount > 0;
+  const canEdit = hasPollingState && !running;
+  const selectedMode = elements.pollingExecutionModeSubmit.checked ? "submit" : "dry-run";
+  const selectedModeText = getPollingModeText(selectedMode);
+  const currentModeText = getPollingModeText(polling?.executionMode || "dry-run");
+  const hasTimes = !!elements.pollingTimeOne.value && !!elements.pollingTimeTwo.value;
+  const modeDirty = hasPollingState ? isPollingModeDirty() : false;
+  const timesDirty = hasPollingState ? isPollingTimesDirty() : false;
+
+  setButtonState(elements.btnStartPolling, {
+    text: !hasPollingState ? "读取轮询状态..." : !hasEnabledAccounts && !enabled ? "暂无可轮询账号" : running ? "轮询执行中" : enabled ? "轮询已开启" : "开启轮询",
+    disabled: !hasPollingState || running || enabled || !hasEnabledAccounts,
+    current: hasPollingState && (running || enabled),
+    title: !hasPollingState
+      ? "正在读取轮询状态"
+      : !hasEnabledAccounts && !enabled
+        ? "请先导入并启用至少一个账号"
+        : running
+          ? "轮询正在执行中"
+          : enabled
+            ? "轮询当前已经开启"
+            : "开启后会按当前配置自动轮询",
+  });
+
+  setButtonState(elements.btnStopPolling, {
+    text: !hasPollingState ? "读取轮询状态..." : running ? "停止轮询" : enabled ? "关闭轮询" : "轮询已关闭",
+    disabled: !hasPollingState || (!enabled && !running),
+    title: !hasPollingState ? "正在读取轮询状态" : !enabled && !running ? "轮询当前已经关闭" : "停止后将不再按计划自动执行",
+  });
+
+  setButtonState(elements.btnToggleWeekendPolling, {
+    text: !hasPollingState ? "周末轮询：读取中" : `周末轮询：${polling?.allowWeekends ? "已开启" : "已关闭"}`,
+    disabled: !canEdit,
+    current: !!polling?.allowWeekends,
+    title: !hasPollingState ? "正在读取轮询状态" : running ? "轮询执行中，暂不可修改周末设置" : "切换是否允许周末执行轮询",
+  });
+
+  setButtonState(elements.btnRunPollingTest, {
+    text: !hasPollingState ? "读取轮询状态..." : running ? "轮询执行中..." : "立即测试一次",
+    disabled: !hasPollingState || running,
+    title: !hasPollingState ? "正在读取轮询状态" : running ? "轮询执行中，暂不可重复触发测试" : "手动触发一次测试流程",
+  });
+
+  setButtonState(elements.btnSavePollingMode, {
+    text: !hasPollingState ? "保存轮询模式" : running ? "轮询执行中" : modeDirty ? `保存为${selectedModeText}` : `当前模式：${currentModeText}`,
+    disabled: !canEdit || !modeDirty,
+    current: hasPollingState && !modeDirty,
+    title: !hasPollingState ? "正在读取轮询状态" : running ? "轮询执行中，暂不可修改模式" : modeDirty ? `保存后切换为${selectedModeText}` : `当前已是${currentModeText}`,
+  });
+
+  setButtonState(elements.btnSavePollingTimes, {
+    text: !hasPollingState ? "保存时间与偏移" : running ? "轮询执行中" : !hasTimes ? "请先填写时间" : timesDirty ? "保存时间与偏移" : "当前时间已生效",
+    disabled: !canEdit || !hasTimes || !timesDirty,
+    current: hasPollingState && hasTimes && !timesDirty,
+    title: !hasPollingState
+      ? "正在读取轮询状态"
+      : running
+        ? "轮询执行中，暂不可修改时间"
+        : !hasTimes
+          ? "请先填写两个打卡时间"
+          : timesDirty
+            ? "保存当前时间和随机顺延设置"
+            : "当前时间与随机顺延已生效",
+  });
+
+  elements.pollingExecutionModeDryRun.disabled = !canEdit;
+  elements.pollingExecutionModeSubmit.disabled = !canEdit;
+  elements.pollingTimeOne.disabled = !canEdit;
+  elements.pollingTimeTwo.disabled = !canEdit;
+  if (elements.pollingRandomDelayEnabled) elements.pollingRandomDelayEnabled.disabled = !canEdit;
 }
 
 function renderSession(session) {
@@ -381,6 +597,7 @@ function renderAccounts(registry) {
             <div class="account-status-line">${escapeHtml(helper)}</div>
             <div class="account-status-line ${account.photo?.exists ? "detail-line-success" : "detail-line-danger"}">打卡照片：${escapeHtml(getPhotoStatusText(account))}</div>
             <div class="account-status-line subtle">${account.photoPath ? `照片路径：${escapeHtml(account.photoPath)}` : "照片路径：未配置"}</div>
+            <div class="account-status-line subtle">打卡位置：${escapeHtml(getAccountLocationText(account))}</div>
             <div class="account-status-line subtle">最近结果：${escapeHtml(account.lastRun?.summary || "暂无")}</div>
           </div>
           <div class="account-actions">
@@ -456,8 +673,7 @@ function renderPolling(polling) {
     );
   }
   if (polling?.locationProfile) {
-    currentLines.push(line(`固定坐标：${escapeHtml(polling.locationProfile.longitude)} / ${escapeHtml(polling.locationProfile.latitude)}`));
-    currentLines.push(line(`目标地址：${escapeHtml(polling.locationProfile.expectedAddress || "-")}`));
+    currentLines.push(...buildPollingLocationLines(polling.locationProfile));
   }
   if (polling?.lastRun) {
     const details = polling.lastRun.details || {};
@@ -503,6 +719,8 @@ function renderPolling(polling) {
         )
         .join("")
     : line("暂无执行记录。");
+  renderPollingActionFeedback();
+  syncPollingControls();
 }
 
 function renderNotify(config) {
@@ -613,6 +831,7 @@ function renderAuthModal() {
     card("账号状态", getSessionStatusText(account)),
     card("密码来源", account.hasPassword ? `已导入 / ${account.passwordMasked || ""}` : "未导入，请手动输入"),
     card("打卡照片", getPhotoStatusText(account)),
+    card("打卡位置", getAccountLocationText(account)),
     card("部门 / 姓名", `${account.department || "-"} / ${account.realName || "-"}`),
     card("最近结果", account.lastRun?.summary || "暂无"),
   ].join("");
@@ -731,10 +950,11 @@ function renderRunModal() {
   } else {
     const account = reusableAccounts.find((item) => item.userAccount === state.run.selected) || reusableAccounts[0];
     state.run.selected = account.userAccount;
-    setBanner(elements.runBanner, "warning", "真实打卡会调用生产提交接口，并自动使用表格中的照片路径。");
+    setBanner(elements.runBanner, "warning", "真实打卡会调用生产提交接口，并自动使用表格中的照片路径与位置坐标。");
     elements.runPhotoStatus.innerHTML = [
       line(`<strong>照片状态</strong><br /><span>${escapeHtml(getPhotoStatusText(account))}</span>`, account.photo?.exists ? "detail-line-success" : "detail-line-danger"),
       line(`<strong>照片路径</strong><br /><span>${escapeHtml(account.photoPath || "未配置")}</span>`),
+      line(`<strong>打卡位置</strong><br /><span>${escapeHtml(getAccountLocationText(account))}</span>`),
       line(`<strong>账号状态</strong><br /><span>${escapeHtml(getSessionStatusText(account))}</span>`),
     ].join("");
     elements.btnRunConfirm.disabled = !account.photo?.exists;
@@ -1090,28 +1310,42 @@ async function refreshAllAccounts() {
 }
 
 async function startPolling() {
+  if (state.polling?.enabled) {
+    setPollingActionFeedback(state.polling?.running ? "轮询正在执行中，无需重复开启。" : "轮询当前已开启，无需重复开启。");
+    return;
+  }
   setLoading(elements.btnStartPolling, true, "开启中...");
   try {
     const payload = await api("/api/clock-polling/start", { method: "POST" });
     renderPolling(payload);
+    setPollingActionFeedback(payload.running ? `轮询已启动，正在执行 ${payload.activeRun?.slotLabel || "当前任务"}。` : "轮询已开启。", "success");
     setOutput(payload);
   } catch (error) {
     setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+    setPollingActionFeedback(`开启轮询失败：${getErrorMessage(error)}`, "error");
   } finally {
     setLoading(elements.btnStartPolling, false);
+    syncPollingControls();
   }
 }
 
 async function stopPolling() {
+  if (!state.polling?.enabled && !state.polling?.running) {
+    setPollingActionFeedback("轮询当前已关闭，无需重复关闭。");
+    return;
+  }
   setLoading(elements.btnStopPolling, true, "关闭中...");
   try {
     const payload = await api("/api/clock-polling/stop", { method: "POST" });
     renderPolling(payload);
+    setPollingActionFeedback("轮询已关闭。", "success");
     setOutput(payload);
   } catch (error) {
     setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+    setPollingActionFeedback(`关闭轮询失败：${getErrorMessage(error)}`, "error");
   } finally {
     setLoading(elements.btnStopPolling, false);
+    syncPollingControls();
   }
 }
 
@@ -1123,31 +1357,47 @@ async function toggleWeekendPolling() {
       body: { allowWeekends: !state.polling?.allowWeekends },
     });
     renderPolling(payload);
+    setPollingActionFeedback(payload.allowWeekends ? "周末轮询已开启。" : "周末轮询已关闭。", "success");
     setOutput(payload);
   } catch (error) {
     setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+    setPollingActionFeedback(`切换周末轮询失败：${getErrorMessage(error)}`, "error");
   } finally {
     setLoading(elements.btnToggleWeekendPolling, false);
+    syncPollingControls();
   }
 }
 
 async function savePollingMode() {
   const executionMode = elements.pollingExecutionModeSubmit.checked ? "submit" : "dry-run";
+  if ((state.polling?.executionMode || "dry-run") === executionMode) {
+    setPollingActionFeedback(`轮询模式未变化，当前仍为${getPollingModeText(executionMode)}。`);
+    return;
+  }
   setLoading(elements.btnSavePollingMode, true, "保存中...");
   try {
     const payload = await api("/api/clock-polling/mode", { method: "POST", body: { executionMode } });
     renderPolling(payload);
+    setPollingActionFeedback(`轮询模式已保存：${payload.executionModeLabel || getPollingModeText(payload.executionMode)}。`, "success");
     setOutput(payload);
   } catch (error) {
     setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+    setPollingActionFeedback(`保存轮询模式失败：${getErrorMessage(error)}`, "error");
   } finally {
     setLoading(elements.btnSavePollingMode, false);
+    syncPollingControls();
   }
 }
 
 async function savePollingTimes() {
   const timeOne = elements.pollingTimeOne.value;
   const timeTwo = elements.pollingTimeTwo.value;
+  const randomDelayEnabled = !!elements.pollingRandomDelayEnabled.checked;
+  const [currentTimeOne, currentTimeTwo] = getPollingTimes();
+  if (timeOne && timeTwo && currentTimeOne === timeOne && currentTimeTwo === timeTwo && !!state.polling?.randomDelayEnabled === randomDelayEnabled) {
+    setPollingActionFeedback("轮询时间与随机顺延未变化，无需保存。");
+    return;
+  }
   if (!timeOne || !timeTwo) {
     setBanner(elements.pollingBanner, "warning", "请先填写两个打卡时间。");
     return;
@@ -1159,15 +1409,22 @@ async function savePollingTimes() {
       method: "POST",
       body: {
         times: [timeOne, timeTwo],
-        randomDelayEnabled: !!elements.pollingRandomDelayEnabled.checked,
+        randomDelayEnabled,
       },
     });
     renderPolling(payload);
+    const [savedTimeOne, savedTimeTwo] = getPollingTimes(payload);
+    setPollingActionFeedback(
+      `轮询时间已保存：${savedTimeOne || timeOne} / ${savedTimeTwo || timeTwo}，${getPollingRandomDelayText(!!payload.randomDelayEnabled)}。`,
+      "success",
+    );
     setOutput(payload);
   } catch (error) {
     setBanner(elements.pollingBanner, "error", getErrorMessage(error));
+    setPollingActionFeedback(`保存轮询时间失败：${getErrorMessage(error)}`, "error");
   } finally {
     setLoading(elements.btnSavePollingTimes, false);
+    syncPollingControls();
   }
 }
 function openRunModal() {
@@ -1360,6 +1617,11 @@ function bind() {
   elements.btnSavePollingMode.addEventListener("click", () => savePollingMode().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
   elements.btnSavePollingTimes.addEventListener("click", () => savePollingTimes().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
   elements.btnRunPollingTest.addEventListener("click", openRunModal);
+  elements.pollingExecutionModeDryRun.addEventListener("change", syncPollingControls);
+  elements.pollingExecutionModeSubmit.addEventListener("change", syncPollingControls);
+  elements.pollingTimeOne.addEventListener("input", syncPollingControls);
+  elements.pollingTimeTwo.addEventListener("input", syncPollingControls);
+  if (elements.pollingRandomDelayEnabled) elements.pollingRandomDelayEnabled.addEventListener("change", syncPollingControls);
 
   elements.btnRefreshAutostart.addEventListener("click", () => loadAutostart({ showOutput: true }).catch((error) => setBanner(elements.autostartBanner, "error", getErrorMessage(error))));
   elements.btnSaveAutostart.addEventListener("click", () => saveAutostart().catch((error) => setBanner(elements.autostartBanner, "error", getErrorMessage(error))));
@@ -1417,6 +1679,8 @@ function bind() {
     if (state.run.open) closeRunModal();
     if (state.clear.open) closeClearTokensModal();
   });
+
+  syncPollingControls();
 }
 
 async function boot() {

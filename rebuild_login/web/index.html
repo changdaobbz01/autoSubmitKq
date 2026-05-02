@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>掌上考勤 - 多账号测试台</title>
-    <link rel="stylesheet" href="/styles.css?v=20260407-1835" />
+    <link rel="stylesheet" href="/styles.css?v=20260502-01" />
   </head>
   <body>
     <div class="page-shell compact">
@@ -136,6 +136,10 @@
             <button id="btn-toggle-weekend-polling" class="ghost-button" type="button">周末轮询：关闭</button>
             <button id="btn-run-polling-test" class="secondary-button" type="button">立即测试一次</button>
             <button id="btn-stop-polling" class="ghost-button danger" type="button">关闭轮询</button>
+          </div>
+          <div class="detail-block">
+            <div class="detail-block-title">最近一次操作结果</div>
+            <div id="polling-action-feedback" class="detail-line-list polling-action-feedback" aria-live="polite"></div>
           </div>
           <div class="polling-settings">
             <div class="detail-block-title">轮询执行模式</div>
@@ -379,6 +383,6 @@
       </section>
     </div>
 
-    <script type="module" src="/app.js?v=20260407-1835"></script>
+    <script type="module" src="/app.js?v=20260502-01"></script>
   </body>
 </html>

@@ -316,6 +316,25 @@ button:disabled {
   color: var(--danger);
 }
 
+button.is-current {
+  opacity: 0.88;
+}
+
+button.is-current:disabled {
+  opacity: 0.82;
+}
+
+.primary-button.is-current {
+  box-shadow: 0 14px 28px rgba(15, 108, 207, 0.28);
+}
+
+.secondary-button.is-current,
+.ghost-button.is-current {
+  color: var(--cobalt-deep);
+  border-color: rgba(15, 108, 207, 0.22);
+  background: rgba(15, 108, 207, 0.12);
+}
+
 .login-form {
   display: grid;
   gap: 16px;
@@ -599,6 +618,10 @@ button:disabled {
 .polling-settings {
   display: grid;
   gap: 12px;
+}
+
+.polling-action-feedback {
+  min-height: 58px;
 }
 
 .polling-mode-toggle {
@@ -982,6 +1005,22 @@ body.modal-open {
 
 .detail-line-danger {
   background: rgba(192, 72, 51, 0.12);
+}
+
+.detail-line-neutral {
+  color: var(--cobalt-deep);
+  background: rgba(15, 108, 207, 0.08);
+}
+
+.polling-action-feedback .detail-line {
+  border: 1px solid rgba(15, 108, 207, 0.08);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.polling-action-feedback .detail-line strong,
+.polling-action-feedback .detail-line span {
+  display: block;
 }
 
 .output-panel {
