@@ -30,6 +30,25 @@ def _format_timestamp(epoch: int | None) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(epoch))
 
 
+def _resolve_result_address(result: dict[str, Any]) -> str:
+    location = result.get("location") if isinstance(result.get("location"), dict) else {}
+    configured_location = (
+        result.get("configuredLocation") if isinstance(result.get("configuredLocation"), dict) else {}
+    )
+    would_submit = result.get("wouldSubmit") if isinstance(result.get("wouldSubmit"), dict) else {}
+    return str(
+        location.get("submitAddress")
+        or location.get("configuredAddress")
+        or location.get("expectedAddress")
+        or location.get("address")
+        or configured_location.get("expectedAddress")
+        or configured_location.get("clockAddress")
+        or would_submit.get("address")
+        or location.get("rangeAddress")
+        or ""
+    )
+
+
 class WeComBotNotifier:
     def __init__(self, path: Path = DEFAULT_CONFIG_PATH) -> None:
         self.path = path
@@ -83,8 +102,7 @@ class WeComBotNotifier:
         ret_msg = str(submit_response.get("retMsg") or "")
         is_success = bool(submit_response.get("isSuccess")) and ret_code == "200"
         photo_status = str((photo_state or {}).get("statusText") or "未配置")
-        location = result.get("location") if isinstance(result.get("location"), dict) else {}
-        address = str(location.get("rangeAddress") or "")
+        address = _resolve_result_address(result)
         content = "\n".join(
             [
                 "[掌上考勤] 真实打卡结果",

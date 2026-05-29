@@ -914,6 +914,14 @@ class ClockDryRunScheduler:
         self._wake_event.set()
         return self.get_status_payload()
 
+    def refresh_accounts(self) -> dict[str, Any]:
+        with self._lock:
+            if self._enabled and self._active_run is None:
+                self._set_next_run_locked()
+                self._persist_locked()
+        self._wake_event.set()
+        return self.get_status_payload()
+
     def trigger_test(self) -> dict[str, Any]:
         worker: threading.Thread | None = None
         with self._lock:
@@ -1665,13 +1673,20 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
         try:
             file_bytes = self._read_uploaded_file()
             payload = self.account_registry.import_xlsx(file_bytes)
+            polling = self.polling_scheduler.refresh_accounts()
         except ValueError as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
         except Exception as exc:  # noqa: BLE001
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
-        self._write_json({"importSummary": payload, "registry": self.account_registry.summarize_registry()})
+        self._write_json(
+            {
+                "importSummary": payload,
+                "registry": self.account_registry.summarize_registry(),
+                "polling": polling,
+            }
+        )
 
     def _handle_post_account_login(self) -> None:
         body = self._read_json()
@@ -1735,10 +1750,18 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             return
         try:
             account = self.account_registry.set_enabled(user_account, enabled)
+            polling = self.polling_scheduler.refresh_accounts()
         except ValueError as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
-        self._write_json({"updated": True, "account": account, "registry": self.account_registry.summarize_registry()})
+        self._write_json(
+            {
+                "updated": True,
+                "account": account,
+                "registry": self.account_registry.summarize_registry(),
+                "polling": polling,
+            }
+        )
 
     def _handle_post_accounts_remove(self) -> None:
         body = self._read_json()
@@ -1746,7 +1769,9 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
         if not user_account:
             self._write_json({"error": "userAccount 为必填"}, status=HTTPStatus.BAD_REQUEST)
             return
-        self._write_json(self.account_registry.remove(user_account))
+        payload = self.account_registry.remove(user_account)
+        payload["polling"] = self.polling_scheduler.refresh_accounts()
+        self._write_json(payload)
 
     def _handle_post_accounts_clear_tokens(self) -> None:
         result = self.account_registry.clear_all_tokens()
