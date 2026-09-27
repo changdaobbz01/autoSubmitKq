@@ -484,6 +484,6 @@ APK 静态层里确实还能看到：
 4. 两个门户登录接口的请求和响应均使用 `3DES/CBC/PKCS5Padding` 与 Base64 封装。
 5. 门户 token 使用“掌上考勤”应用公钥进行 RSA PKCS#1 v1.5 加密。
 6. 考勤端依次调用 `/adUser/user/getToken`、`/adUser/user/getWlyyUser`、`/adUser/user/tologinNewV1ByAccount`，最终取得原有考勤 JWT。
-7. `/getWlyyUser` 的 `data` 是供下一接口使用的加密登录凭据，并非明文考勤账号；真实考勤账号只能在 JWT 登录成功后从用户信息接口取得。
+7. `/getWlyyUser` 的 `data` 是供下一接口使用的加密登录凭据，并非明文考勤账号；真实考勤账号只能在 JWT 登录成功后从用户信息接口取得，再与当前选择账号核对。
 
 当前考勤 H5 实际部署地址为 `https://111.48.251.180:20002/ad/`。由于证书仍签发给 `ad-pro.xyang.xin`，程序请求 API 时使用证书域名 `ad-pro.xyang.xin`，但将 TCP 连接定向到 `111.48.251.180`，保留 SNI、证书链和主机名校验，不使用全局忽略 TLS 的做法。

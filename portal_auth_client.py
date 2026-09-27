@@ -195,7 +195,7 @@ class PortalAuthClient:
         portal_session: PortalSession,
         attendance_client: AttendanceAuthClient,
         *,
-        portal_user_account: str,
+        selected_user_account: str,
     ) -> SessionData:
         app_config = self.resolve_attendance_app_config(portal_session)
         encrypted_token = self._encrypt_portal_token(portal_session.token, app_config.public_key)
@@ -236,7 +236,12 @@ class PortalAuthClient:
         user_info_payload = attendance_client.get_user_info(attendance_token)
         session = attendance_client.build_session(attendance_token, user_info_payload)
         if not session.user_account:
-            raise PortalAuthError(f"门户账号 {portal_user_account} 已登录，但考勤用户信息缺少账号")
+            raise PortalAuthError(f"门户账号 {selected_user_account} 已登录，但考勤用户信息缺少账号")
+        if session.user_account.casefold() != selected_user_account.strip().casefold():
+            raise PortalAuthError(
+                f"门户登录后的考勤账号 {session.user_account}，"
+                f"与当前选择账号 {selected_user_account} 不一致"
+            )
         return session
 
     def resolve_attendance_app_config(self, portal_session: PortalSession) -> PortalAppConfig:
@@ -481,7 +486,7 @@ class PortalAuthCoordinator:
         session = self.client.exchange_attendance_session(
             portal_session,
             attendance_client,
-            portal_user_account=user_account,
+            selected_user_account=user_account,
         )
         attendance_client.session_store.save(session)
         with self._lock:

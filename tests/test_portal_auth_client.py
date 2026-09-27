@@ -17,6 +17,13 @@ from portal_auth_client import (
 )
 
 
+_TEST_PUBLIC_KEY_BASE64 = (
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCYLKxkLI2TwnLConEBXUaNbiaDmsOtarZ2RpLDCjqaQQpgjzbd8P9"
+    "nd1KPwwO45Ilg1+xvychxeD9z6LJZ18b9roHVCc8HxuLzrbhRQ+80MJXrtKpmRLwoeK6KcL5zPi5/cNmNiGbxM8o8s"
+    "ug9Vif+h2Isa2jU2tDuSf3ebf/n1QIDAQAB"
+)
+
+
 class _FixedPortalClient(PortalAuthClient):
     def __init__(self, payload: dict) -> None:
         super().__init__(base_api_url="http://portal.invalid")
@@ -82,11 +89,7 @@ class PortalExchangeTests(unittest.TestCase):
             client = PortalAuthClient(base_api_url="http://portal.invalid")
             client.resolve_attendance_app_config = lambda session: PortalAppConfig(
                 app_id="834786",
-                public_key=(
-                    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCYLKxkLI2TwnLConEBXUaNbiaDmsOtarZ2RpLDCjqaQQpgjzbd8P9"
-                    "nd1KPwwO45Ilg1+xvychxeD9z6LJZ18b9roHVCc8HxuLzrbhRQ+80MJXrtKpmRLwoeK6KcL5zPi5/cNmNiGbxM8o8s"
-                    "ug9Vif+h2Isa2jU2tDuSf3ebf/n1QIDAQAB"
-                ),
+                public_key=_TEST_PUBLIC_KEY_BASE64,
                 start_url="https://attendance.invalid",
             )
             session = client.exchange_attendance_session(
@@ -99,7 +102,7 @@ class PortalExchangeTests(unittest.TestCase):
                     user_info={},
                 ),
                 attendance,
-                portal_user_account="portal-account",
+                selected_user_account="attendance-account",
             )
         self.assertEqual("attendance-account", session.user_account)
         self.assertEqual(
@@ -114,6 +117,32 @@ class PortalExchangeTests(unittest.TestCase):
             "encrypted-account-credential",
             attendance.request_bodies["/adUser/user/tologinNewV1ByAccount"]["userAccount"],
         )
+
+    def test_exchange_rejects_resolved_attendance_account_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            attendance = _ExchangeAttendanceClient(Path(temp_dir) / "session.json")
+            client = PortalAuthClient(base_api_url="http://portal.invalid")
+            client.resolve_attendance_app_config = lambda _session: PortalAppConfig(
+                app_id="attendance",
+                public_key=_TEST_PUBLIC_KEY_BASE64,
+                start_url="https://attendance.invalid/",
+            )
+            with self.assertRaisesRegex(
+                PortalAuthError,
+                "门户登录后的考勤账号 attendance-account，与当前选择账号 another-account 不一致",
+            ):
+                client.exchange_attendance_session(
+                    PortalSession(
+                        token="portal-token",
+                        ticket="ticket",
+                        username="another-account",
+                        user_id="1",
+                        area="",
+                        user_info={},
+                    ),
+                    attendance,
+                    selected_user_account="another-account",
+                )
 
 
 class _ExchangeAttendanceClient(_FakeAttendanceClient):
