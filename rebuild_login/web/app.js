@@ -863,6 +863,19 @@ function renderAuthModal() {
   ].join("");
 }
 
+function syncCaptchaAuthHint() {
+  if (!state.auth.open || state.auth.method !== "captcha") return;
+  if (!state.auth.requestId) {
+    setBanner(elements.authBanner, "neutral", "正在准备图片验证码...");
+    return;
+  }
+  if (elements.authCode.value.trim()) {
+    setBanner(elements.authBanner, "success", "验证码已填写，点击“获取 token”提交。");
+    return;
+  }
+  setBanner(elements.authBanner, "neutral", "验证码已加载，请输入图片中的字符。");
+}
+
 function closeAuthModal() {
   stopPortalSmsTimer();
   state.auth = {
@@ -1153,16 +1166,19 @@ async function loadAutostart({ showOutput = false } = {}) {
   return payload;
 }
 
-async function loadAuthCaptcha(userAccount, { showOutput = false } = {}) {
+async function loadAuthCaptcha(userAccount, { showOutput = false, announce = true } = {}) {
   if (!userAccount) throw new Error("缺少账号");
+  state.auth.requestId = "";
+  elements.authCode.value = "";
+  elements.authCaptchaImage.removeAttribute("src");
   setLoading(elements.btnAuthCaptcha, true);
   setLoading(elements.btnAuthRefresh, true, "刷新中...");
-  setBanner(elements.authBanner, "neutral", "正在准备验证码...");
+  if (announce) setBanner(elements.authBanner, "neutral", "正在准备图片验证码...");
   try {
     const payload = await api(`/api/accounts/captcha?userAccount=${encodeURIComponent(userAccount)}`);
     state.auth.requestId = payload.requestId || "";
     if (payload.imageDataUrl) elements.authCaptchaImage.src = payload.imageDataUrl;
-    setBanner(elements.authBanner, "neutral", "请输入验证码后刷新该账号 token。");
+    if (announce) syncCaptchaAuthHint();
     if (showOutput) setOutput(payload);
     return payload;
   } finally {
@@ -1336,8 +1352,12 @@ async function submitAccountAuth() {
   }
 
   const verificationCode = elements.authCode.value.trim();
-  if (!verificationCode || !state.auth.requestId) {
-    setBanner(elements.authBanner, "warning", "请先获取验证码并填写。");
+  if (!state.auth.requestId) {
+    setBanner(elements.authBanner, "warning", "图片验证码尚未加载，请先点击刷新验证码。");
+    return;
+  }
+  if (!verificationCode) {
+    setBanner(elements.authBanner, "warning", "请输入图片验证码后再获取 token。");
     return;
   }
 
@@ -1362,8 +1382,17 @@ async function submitAccountAuth() {
       closeAuthModal();
     }, 500);
   } catch (error) {
-    setBanner(elements.authBanner, "error", getErrorMessage(error));
-    await loadAuthCaptcha(state.auth.account.userAccount).catch(() => {});
+    const loginError = getErrorMessage(error);
+    try {
+      await loadAuthCaptcha(state.auth.account.userAccount, { announce: false });
+      setBanner(elements.authBanner, "error", `${loginError}；验证码已刷新，请重新输入。`);
+    } catch (captchaError) {
+      setBanner(
+        elements.authBanner,
+        "error",
+        `${loginError}；同时刷新验证码失败：${getErrorMessage(captchaError)}`,
+      );
+    }
   } finally {
     setLoading(elements.btnAuthSubmit, false);
   }
@@ -1448,7 +1477,7 @@ function changeAuthMethod(method) {
     setBanner(elements.authBanner, "neutral", "发送短信验证码后，可通过门户单点刷新考勤 token。");
     return;
   }
-  setBanner(elements.authBanner, "neutral", "请输入图片验证码后刷新该账号 token。");
+  syncCaptchaAuthHint();
   if (!state.auth.requestId) {
     loadAuthCaptcha(state.auth.account.userAccount).catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error)));
   }
@@ -1787,6 +1816,7 @@ function bind() {
   elements.btnTestNotify.addEventListener("click", () => testNotify().catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
 
   elements.btnAuthClose.addEventListener("click", closeAuthModal);
+  elements.authCode.addEventListener("input", syncCaptchaAuthHint);
   elements.authMethodCaptcha.addEventListener("change", () => {
     if (elements.authMethodCaptcha.checked) changeAuthMethod("captcha");
   });
