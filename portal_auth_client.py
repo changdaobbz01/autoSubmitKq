@@ -195,7 +195,7 @@ class PortalAuthClient:
         portal_session: PortalSession,
         attendance_client: AttendanceAuthClient,
         *,
-        expected_user_account: str,
+        portal_user_account: str,
     ) -> SessionData:
         app_config = self.resolve_attendance_app_config(portal_session)
         encrypted_token = self._encrypt_portal_token(portal_session.token, app_config.public_key)
@@ -214,19 +214,17 @@ class PortalAuthClient:
             method="POST",
             body={"token": exchange_token},
         )
-        attendance_account = self._extract_attendance_account(account_payload.get("data"))
-        if str(account_payload.get("code") or "") != "1000" or not attendance_account:
+        login_credential = self._extract_attendance_login_credential(account_payload.get("data"))
+        if str(account_payload.get("code") or "") != "1000" or not login_credential:
             raise PortalAuthError(self._message_from(account_payload, "无法取得对应的考勤账号"))
-        if attendance_account.casefold() != expected_user_account.strip().casefold():
-            raise PortalAuthError(
-                f"门户映射到考勤账号 {attendance_account}，与当前选择账号 {expected_user_account} 不一致"
-            )
 
+        # getWlyyUser returns an opaque, encrypted login credential rather than
+        # the plaintext attendance account. The next endpoint resolves it.
         login_payload = attendance_client.call_api(
             "/adUser/user/tologinNewV1ByAccount",
             method="POST",
             body={
-                "userAccount": attendance_account,
+                "userAccount": login_credential,
                 "currentTime": str(int(time.time() * 1000)),
             },
         )
@@ -236,7 +234,10 @@ class PortalAuthClient:
             raise PortalAuthError(self._message_from(login_payload, "门户单点登录考勤失败"))
 
         user_info_payload = attendance_client.get_user_info(attendance_token)
-        return attendance_client.build_session(attendance_token, user_info_payload)
+        session = attendance_client.build_session(attendance_token, user_info_payload)
+        if not session.user_account:
+            raise PortalAuthError(f"门户账号 {portal_user_account} 已登录，但考勤用户信息缺少账号")
+        return session
 
     def resolve_attendance_app_config(self, portal_session: PortalSession) -> PortalAppConfig:
         fallback = PortalAppConfig(
@@ -392,7 +393,7 @@ class PortalAuthClient:
         return str(payload.get("message") or payload.get("retMsg") or payload.get("msg") or fallback)
 
     @staticmethod
-    def _extract_attendance_account(value: Any) -> str:
+    def _extract_attendance_login_credential(value: Any) -> str:
         if isinstance(value, str):
             return value.strip()
         if isinstance(value, dict):
@@ -480,7 +481,7 @@ class PortalAuthCoordinator:
         session = self.client.exchange_attendance_session(
             portal_session,
             attendance_client,
-            expected_user_account=user_account,
+            portal_user_account=user_account,
         )
         attendance_client.session_store.save(session)
         with self._lock:

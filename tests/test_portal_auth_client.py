@@ -76,7 +76,7 @@ class PortalCryptoTests(unittest.TestCase):
 
 
 class PortalExchangeTests(unittest.TestCase):
-    def test_exchange_builds_attendance_session_for_expected_account(self) -> None:
+    def test_exchange_passes_opaque_mapping_credential_to_attendance_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             attendance = _ExchangeAttendanceClient(Path(temp_dir) / "session.json")
             client = PortalAuthClient(base_api_url="http://portal.invalid")
@@ -99,9 +99,9 @@ class PortalExchangeTests(unittest.TestCase):
                     user_info={},
                 ),
                 attendance,
-                expected_user_account="account",
+                portal_user_account="portal-account",
             )
-        self.assertEqual("account", session.user_account)
+        self.assertEqual("attendance-account", session.user_account)
         self.assertEqual(
             [
                 "/adUser/user/getToken",
@@ -110,29 +110,38 @@ class PortalExchangeTests(unittest.TestCase):
             ],
             attendance.paths,
         )
+        self.assertEqual(
+            "encrypted-account-credential",
+            attendance.request_bodies["/adUser/user/tologinNewV1ByAccount"]["userAccount"],
+        )
 
 
 class _ExchangeAttendanceClient(_FakeAttendanceClient):
     def __init__(self, path: Path) -> None:
         super().__init__(path)
         self.paths: list[str] = []
+        self.request_bodies: dict[str, dict] = {}
 
     def call_api(self, path: str, **kwargs):
         self.paths.append(path)
+        self.request_bodies[path] = kwargs.get("body") or {}
         if path.endswith("/getToken"):
             return {"retCode": "200", "retContent": "exchange-token"}
         if path.endswith("/getWlyyUser"):
-            return {"code": 1000, "data": "account"}
+            return {"code": 1000, "data": "encrypted-account-credential"}
         return {"retCode": "200", "retContent": {"token": "attendance-token"}}
 
     def get_user_info(self, token: str):
-        return {"retCode": "200", "retContent": {"userAccount": "account", "userName": "Tester"}}
+        return {
+            "retCode": "200",
+            "retContent": {"userAccount": "attendance-account", "userName": "Tester"},
+        }
 
     def build_session(self, token: str, user_info_payload: dict) -> SessionData:
         return SessionData(
             token=token,
             token_exp=None,
-            user_account="account",
+            user_account="attendance-account",
             user_name="Tester",
             real_name="",
             department="",
