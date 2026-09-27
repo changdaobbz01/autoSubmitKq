@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import mimetypes
+import os
 import random
 import string
 import sys
@@ -20,8 +21,20 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from network_utils import direct_urlopen
 from runtime_paths import APP_ROOT
 
-BASE_PAGE_URL = "https://ad-pro.xyang.xin:20002/ad/#/login?redirectTo=%2Fhome"
-BASE_API_URL = "https://ad-pro.xyang.xin:20002/iflow/plugins/attendance"
+DEFAULT_ATTENDANCE_TLS_HOST = "ad-pro.xyang.xin"
+DEFAULT_ATTENDANCE_CONNECT_HOST = "111.48.251.180"
+BASE_PAGE_URL = os.getenv(
+    "ATTENDANCE_PAGE_URL",
+    "https://111.48.251.180:20002/ad/#/home",
+).strip()
+BASE_API_URL = os.getenv(
+    "ATTENDANCE_API_URL",
+    f"https://{DEFAULT_ATTENDANCE_TLS_HOST}:20002/iflow/plugins/attendance",
+).strip()
+ATTENDANCE_CONNECT_HOST = os.getenv(
+    "ATTENDANCE_CONNECT_HOST",
+    DEFAULT_ATTENDANCE_CONNECT_HOST,
+).strip()
 PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDkU/q+WCysfHBkIjzySfr/YoJSV/S
 vgGI6kgk+maamO9EQYCWGpeBAuz1b9X0SeDqeOByM7ntPvgg3aOVNnhK5mkZXgSkkof
@@ -99,11 +112,14 @@ class AttendanceAuthClient:
         session_store: Optional[SessionStore] = None,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         skew_seconds: int = DEFAULT_SKEW_SECONDS,
+        connect_host: Optional[str] = ATTENDANCE_CONNECT_HOST,
     ) -> None:
         self.base_api_url = base_api_url.rstrip("/")
         self.session_store = session_store or SessionStore()
         self.timeout_seconds = timeout_seconds
         self.skew_seconds = skew_seconds
+        self.connect_host = str(connect_host or "").strip()
+        self._api_host = (urllib.parse.urlsplit(self.base_api_url).hostname or "").lower()
         self._public_key = serialization.load_pem_public_key(PUBLIC_KEY_PEM)
 
     def generate_request_id(self, length: int = 21) -> str:
@@ -374,7 +390,16 @@ class AttendanceAuthClient:
 
         request = urllib.request.Request(url=url, data=data, headers=request_headers, method=method.upper())
         try:
-            with direct_urlopen(request, timeout=self.timeout_seconds) as response:
+            host_overrides = (
+                {self._api_host: self.connect_host}
+                if self._api_host and self.connect_host
+                else None
+            )
+            with direct_urlopen(
+                request,
+                timeout=self.timeout_seconds,
+                host_overrides=host_overrides,
+            ) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
                 raw = response.read().decode(charset, errors="ignore")
         except urllib.error.HTTPError as exc:

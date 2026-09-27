@@ -287,6 +287,22 @@
         </div>
         <div id="account-auth-banner" class="session-banner neutral">正在准备验证码...</div>
         <div id="account-auth-summary" class="session-summary"></div>
+        <div class="auth-method-toggle" role="radiogroup" aria-label="登录方式">
+          <label class="auth-method-card">
+            <input id="account-auth-method-captcha" type="radio" name="account-auth-method" value="captcha" checked />
+            <span>
+              <strong>图片验证码</strong>
+              <small>直接登录考勤，沿用原有方式</small>
+            </span>
+          </label>
+          <label class="auth-method-card">
+            <input id="account-auth-method-portal" type="radio" name="account-auth-method" value="portal" />
+            <span>
+              <strong>门户短信</strong>
+              <small>通过综合运维门户单点换取 token</small>
+            </span>
+          </label>
+        </div>
         <div class="field-grid">
           <label class="field">
             <span>账号</span>
@@ -297,14 +313,25 @@
             <input id="account-auth-password" type="password" autocomplete="current-password" placeholder="默认使用导入密码，可留空" />
           </label>
         </div>
-        <div class="captcha-row modal-captcha-row">
-          <label class="field captcha-field">
-            <span>验证码</span>
-            <input id="account-auth-code" autocomplete="off" placeholder="请输入验证码" />
-          </label>
-          <button id="btn-account-auth-captcha" class="captcha-button" type="button" title="点击刷新验证码">
-            <img id="account-auth-captcha-image" alt="账号验证码" />
-          </button>
+        <div id="account-auth-captcha-panel">
+          <div class="captcha-row modal-captcha-row">
+            <label class="field captcha-field">
+              <span>图片验证码</span>
+              <input id="account-auth-code" autocomplete="off" placeholder="请输入图片验证码" />
+            </label>
+            <button id="btn-account-auth-captcha" class="captcha-button" type="button" title="点击刷新验证码">
+              <img id="account-auth-captcha-image" alt="账号验证码" />
+            </button>
+          </div>
+        </div>
+        <div id="account-auth-portal-panel" class="hidden">
+          <div class="portal-code-row">
+            <label class="field">
+              <span>短信验证码</span>
+              <input id="account-auth-sms-code" inputmode="numeric" autocomplete="one-time-code" placeholder="请输入门户短信验证码" />
+            </label>
+            <button id="btn-account-auth-send-sms" class="ghost-button" type="button">发送短信验证码</button>
+          </div>
         </div>
         <div class="hint-text" id="account-auth-tip">
           默认复用导入表中的密码；如果密码刚刚改过，可以在这里手动覆盖并刷新该账号 token。

@@ -887,6 +887,61 @@ button.is-current:disabled {
   align-items: end;
 }
 
+.auth-method-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-method-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid rgba(18, 34, 58, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+}
+
+.auth-method-card:has(input:checked) {
+  border-color: rgba(15, 108, 207, 0.42);
+  background: rgba(235, 246, 255, 0.92);
+  box-shadow: 0 0 0 3px rgba(15, 108, 207, 0.08);
+}
+
+.auth-method-card input {
+  margin: 0;
+  accent-color: var(--cobalt);
+}
+
+.auth-method-card span {
+  display: grid;
+  gap: 3px;
+}
+
+.auth-method-card strong {
+  color: var(--ink-strong);
+  font-size: 14px;
+}
+
+.auth-method-card small {
+  color: var(--ink-soft);
+  line-height: 1.4;
+}
+
+.portal-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.portal-code-row .ghost-button {
+  min-height: 46px;
+  white-space: nowrap;
+}
+
 .mode-toggle {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1099,6 +1154,8 @@ body.modal-open {
   .notify-option-grid,
   .menu-grid,
   .captcha-row,
+  .auth-method-toggle,
+  .portal-code-row,
   .mode-toggle,
   .home-hero,
   .polling-layout,

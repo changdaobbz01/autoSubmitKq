@@ -10,7 +10,14 @@ const state = {
   timer: null,
   importMeta: null,
   importSummary: null,
-  auth: { open: false, account: null, requestId: "" },
+  auth: {
+    open: false,
+    account: null,
+    method: "captcha",
+    requestId: "",
+    portalChallengeId: "",
+    smsRetryAt: 0,
+  },
   run: { open: false, mode: "flow", selected: "", result: null },
   clear: { open: false },
 };
@@ -85,10 +92,17 @@ const elements = {
   authSummary: $("#account-auth-summary"),
   authUserAccount: $("#account-auth-user-account"),
   authPassword: $("#account-auth-password"),
+  authMethodCaptcha: $("#account-auth-method-captcha"),
+  authMethodPortal: $("#account-auth-method-portal"),
+  authCaptchaPanel: $("#account-auth-captcha-panel"),
+  authPortalPanel: $("#account-auth-portal-panel"),
   authCode: $("#account-auth-code"),
+  authSmsCode: $("#account-auth-sms-code"),
+  authTip: $("#account-auth-tip"),
   authCaptchaImage: $("#account-auth-captcha-image"),
   btnAuthCaptcha: $("#btn-account-auth-captcha"),
   btnAuthRefresh: $("#btn-account-auth-refresh"),
+  btnAuthSendSms: $("#btn-account-auth-send-sms"),
   btnAuthSubmit: $("#btn-account-auth-submit"),
   btnAuthClose: $("#btn-account-auth-close"),
   runModal: $("#polling-run-modal"),
@@ -113,6 +127,7 @@ const elements = {
 const ACCOUNTS_COLLAPSE_THRESHOLD = 1;
 let accountsListInitialized = false;
 let accountsListExpanded = true;
+let portalSmsTimer = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -825,8 +840,19 @@ function renderAuthModal() {
   if (!open) return;
 
   const account = state.auth.account;
+  const portalMode = state.auth.method === "portal";
   elements.authUserAccount.value = account.userAccount || "";
   elements.authPassword.placeholder = account.hasPassword ? `留空则使用导入密码 ${account.passwordMasked || ""}` : "请输入密码";
+  elements.authMethodCaptcha.checked = !portalMode;
+  elements.authMethodPortal.checked = portalMode;
+  elements.authCaptchaPanel.classList.toggle("hidden", portalMode);
+  elements.authPortalPanel.classList.toggle("hidden", !portalMode);
+  elements.btnAuthRefresh.classList.toggle("hidden", portalMode);
+  setButtonText(elements.btnAuthSubmit, portalMode ? "通过门户获取 token" : "获取 token");
+  elements.authTip.textContent = portalMode
+    ? "短信验证码由综合运维门户发送；登录成功后只保存考勤 token，不保存门户 token 或短信票据。"
+    : "默认复用导入表中的密码；如果密码刚刚改过，可以在这里手动覆盖并刷新该账号 token。";
+  syncPortalSmsButton();
   elements.authSummary.innerHTML = [
     card("账号状态", getSessionStatusText(account)),
     card("密码来源", account.hasPassword ? `已导入 / ${account.passwordMasked || ""}` : "未导入，请手动输入"),
@@ -838,11 +864,43 @@ function renderAuthModal() {
 }
 
 function closeAuthModal() {
-  state.auth = { open: false, account: null, requestId: "" };
+  stopPortalSmsTimer();
+  state.auth = {
+    open: false,
+    account: null,
+    method: "captcha",
+    requestId: "",
+    portalChallengeId: "",
+    smsRetryAt: 0,
+  };
   elements.authPassword.value = "";
   elements.authCode.value = "";
+  elements.authSmsCode.value = "";
   elements.authCaptchaImage.removeAttribute("src");
   renderAuthModal();
+}
+
+function stopPortalSmsTimer() {
+  if (portalSmsTimer) window.clearInterval(portalSmsTimer);
+  portalSmsTimer = null;
+}
+
+function syncPortalSmsButton() {
+  if (!elements.btnAuthSendSms) return;
+  const seconds = Math.max(0, Math.ceil((state.auth.smsRetryAt - Date.now()) / 1000));
+  setButtonState(elements.btnAuthSendSms, {
+    text: seconds > 0 ? `重新发送 (${seconds}s)` : state.auth.portalChallengeId ? "重新发送验证码" : "发送短信验证码",
+    disabled: seconds > 0,
+  });
+  if (seconds <= 0) stopPortalSmsTimer();
+}
+
+function startPortalSmsTimer() {
+  stopPortalSmsTimer();
+  syncPortalSmsButton();
+  if (state.auth.smsRetryAt > Date.now()) {
+    portalSmsTimer = window.setInterval(syncPortalSmsButton, 1000);
+  }
 }
 
 function buildFlowResultLines(status) {
@@ -1251,9 +1309,17 @@ async function removeAccount(userAccount) {
 async function openAuthModal(userAccount) {
   const account = findAccount(userAccount);
   if (!account) return;
-  state.auth = { open: true, account, requestId: "" };
+  state.auth = {
+    open: true,
+    account,
+    method: "captcha",
+    requestId: "",
+    portalChallengeId: "",
+    smsRetryAt: 0,
+  };
   elements.authPassword.value = "";
   elements.authCode.value = "";
+  elements.authSmsCode.value = "";
   renderAuthModal();
   try {
     await loadAuthCaptcha(userAccount);
@@ -1264,6 +1330,11 @@ async function openAuthModal(userAccount) {
 
 async function submitAccountAuth() {
   if (!state.auth.account) return;
+  if (state.auth.method === "portal") {
+    await submitPortalAccountAuth();
+    return;
+  }
+
   const verificationCode = elements.authCode.value.trim();
   if (!verificationCode || !state.auth.requestId) {
     setBanner(elements.authBanner, "warning", "请先获取验证码并填写。");
@@ -1295,6 +1366,91 @@ async function submitAccountAuth() {
     await loadAuthCaptcha(state.auth.account.userAccount).catch(() => {});
   } finally {
     setLoading(elements.btnAuthSubmit, false);
+  }
+}
+
+async function sendPortalSmsCode() {
+  if (!state.auth.account) return;
+  if (!state.auth.account.hasPassword && !elements.authPassword.value.trim()) {
+    setBanner(elements.authBanner, "warning", "该账号没有导入密码，请先输入门户密码。");
+    return;
+  }
+
+  setLoading(elements.btnAuthSendSms, true, "发送中...");
+  try {
+    const payload = await api("/api/accounts/portal/sms", {
+      method: "POST",
+      body: {
+        userAccount: state.auth.account.userAccount,
+        password: elements.authPassword.value.trim(),
+      },
+    });
+    state.auth.portalChallengeId = payload.challengeId || "";
+    state.auth.smsRetryAt = Date.now() + Number(payload.retryAfterSeconds || 60) * 1000;
+    const validMinutes = Math.max(1, Math.ceil(Number(payload.expiresInSeconds || 600) / 60));
+    elements.authSmsCode.value = "";
+    setOutput(payload);
+    setBanner(
+      elements.authBanner,
+      "success",
+      `${payload.message || "验证码已发送"}，请在 ${validMinutes} 分钟内完成登录。`,
+    );
+  } finally {
+    setLoading(elements.btnAuthSendSms, false);
+    startPortalSmsTimer();
+  }
+}
+
+async function submitPortalAccountAuth() {
+  if (!state.auth.account) return;
+  const smsCode = elements.authSmsCode.value.trim();
+  if (!state.auth.portalChallengeId) {
+    setBanner(elements.authBanner, "warning", "请先发送门户短信验证码。");
+    return;
+  }
+  if (!smsCode) {
+    setBanner(elements.authBanner, "warning", "请输入收到的短信验证码。");
+    return;
+  }
+
+  setLoading(elements.btnAuthSubmit, true, "换取 token 中...");
+  try {
+    const payload = await api("/api/accounts/portal/login", {
+      method: "POST",
+      body: {
+        userAccount: state.auth.account.userAccount,
+        password: elements.authPassword.value.trim(),
+        smsCode,
+        challengeId: state.auth.portalChallengeId,
+      },
+    });
+    setOutput(payload);
+    renderAccounts(payload.registry);
+    await loadPolling();
+    setBanner(elements.authBanner, "success", `${state.auth.account.userAccount} 已通过门户刷新考勤 token。`);
+    elements.authSmsCode.value = "";
+    state.auth.portalChallengeId = "";
+    window.setTimeout(() => {
+      closeAuthModal();
+    }, 700);
+  } catch (error) {
+    setBanner(elements.authBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnAuthSubmit, false);
+  }
+}
+
+function changeAuthMethod(method) {
+  if (!state.auth.account || !["captcha", "portal"].includes(method)) return;
+  state.auth.method = method;
+  renderAuthModal();
+  if (method === "portal") {
+    setBanner(elements.authBanner, "neutral", "发送短信验证码后，可通过门户单点刷新考勤 token。");
+    return;
+  }
+  setBanner(elements.authBanner, "neutral", "请输入图片验证码后刷新该账号 token。");
+  if (!state.auth.requestId) {
+    loadAuthCaptcha(state.auth.account.userAccount).catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error)));
   }
 }
 
@@ -1631,6 +1787,12 @@ function bind() {
   elements.btnTestNotify.addEventListener("click", () => testNotify().catch((error) => setBanner(elements.notifyBanner, "error", getErrorMessage(error))));
 
   elements.btnAuthClose.addEventListener("click", closeAuthModal);
+  elements.authMethodCaptcha.addEventListener("change", () => {
+    if (elements.authMethodCaptcha.checked) changeAuthMethod("captcha");
+  });
+  elements.authMethodPortal.addEventListener("change", () => {
+    if (elements.authMethodPortal.checked) changeAuthMethod("portal");
+  });
   elements.btnAuthRefresh.addEventListener("click", () => {
     if (!state.auth.account) return;
     loadAuthCaptcha(state.auth.account.userAccount, { showOutput: true }).catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error)));
@@ -1639,6 +1801,9 @@ function bind() {
     if (!state.auth.account) return;
     loadAuthCaptcha(state.auth.account.userAccount, { showOutput: true }).catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error)));
   });
+  elements.btnAuthSendSms.addEventListener("click", () =>
+    sendPortalSmsCode().catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error))),
+  );
   elements.btnAuthSubmit.addEventListener("click", () => submitAccountAuth().catch((error) => setBanner(elements.authBanner, "error", getErrorMessage(error))));
 
   elements.runModeFlow.addEventListener("change", () => {

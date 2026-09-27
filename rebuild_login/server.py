@@ -15,12 +15,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+SOURCE_PARENT_DIR = Path(__file__).resolve().parent.parent
+if str(SOURCE_PARENT_DIR) not in sys.path:
+    sys.path.insert(0, str(SOURCE_PARENT_DIR))
+
 from runtime_paths import APP_ROOT, BUNDLE_ROOT, IS_FROZEN
 
 ROOT_DIR = (BUNDLE_ROOT / "rebuild_login") if IS_FROZEN else Path(__file__).resolve().parent
 PARENT_DIR = APP_ROOT
-if str(PARENT_DIR) not in sys.path:
-    sys.path.insert(0, str(PARENT_DIR))
 
 from attendance_auth_client import (
     AttendanceAuthClient,
@@ -32,6 +34,7 @@ from attendance_auth_client import (
 )
 from account_registry import AccountRegistry
 from normal_clock_debug import DEFAULT_LATITUDE, DEFAULT_LONGITUDE, run_normal_clock_check
+from portal_auth_client import PortalAuthCoordinator, PORTAL_API_URL
 from wecom_bot_notifier import WeComBotNotifier
 from windows_autostart import get_public_status as get_autostart_public_status
 from windows_autostart import set_enabled as set_autostart_enabled
@@ -1451,6 +1454,10 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
     def notifier(self) -> WeComBotNotifier:
         return self.server.notifier  # type: ignore[attr-defined]
 
+    @property
+    def portal_auth(self) -> PortalAuthCoordinator:
+        return self.server.portal_auth  # type: ignore[attr-defined]
+
     def do_GET(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path == "/api/config":
@@ -1458,6 +1465,8 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
                 {
                     "basePageUrl": BASE_PAGE_URL,
                     "baseApiUrl": BASE_API_URL,
+                    "portalApiUrl": PORTAL_API_URL,
+                    "portalSmsLoginEnabled": True,
                     "sessionPath": str(self.auth_client.session_store.path),
                     "notifyConfigPath": str(self.notifier.path),
                     "homeMenuGroups": HOME_MENU_GROUPS,
@@ -1510,6 +1519,12 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/accounts/login":
             self._handle_post_account_login()
+            return
+        if parsed.path == "/api/accounts/portal/sms":
+            self._handle_post_account_portal_sms()
+            return
+        if parsed.path == "/api/accounts/portal/login":
+            self._handle_post_account_portal_login()
             return
         if parsed.path == "/api/accounts/toggle":
             self._handle_post_accounts_toggle()
@@ -1727,6 +1742,7 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             client.session_store.save(session)
             if password_override:
                 self.account_registry.set_password(user_account, password_override)
+            polling = self.polling_scheduler.refresh_accounts()
         except AuthError as exc:
             self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
             return
@@ -1734,10 +1750,83 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
         self._write_json(
             {
                 "loggedIn": True,
+                "authMethod": "image-captcha",
                 "userAccount": user_account,
                 "session": build_session_payload(session),
                 "account": self.account_registry.get_account(user_account),
                 "registry": self.account_registry.summarize_registry(),
+                "polling": polling,
+            }
+        )
+
+    def _handle_post_account_portal_sms(self) -> None:
+        body = self._read_json()
+        user_account = str(body.get("userAccount", "")).strip()
+        password_override = str(body.get("password", "")).strip()
+        if not user_account:
+            self._write_json({"error": "userAccount 为必填"}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            account = self.account_registry.get_account(user_account, include_sensitive=True)
+            password = password_override or str(account.get("password") or "")
+            if not password:
+                raise ValueError("该账号没有可用密码，请手动输入")
+            challenge = self.portal_auth.request_sms_code(user_account, password)
+        except (ValueError, AuthError) as exc:
+            self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        self._write_json(
+            {
+                **challenge,
+                "userAccount": user_account,
+                "passwordSource": "manual" if password_override else "xlsx",
+            }
+        )
+
+    def _handle_post_account_portal_login(self) -> None:
+        body = self._read_json()
+        user_account = str(body.get("userAccount", "")).strip()
+        password_override = str(body.get("password", "")).strip()
+        sms_code = str(body.get("smsCode", "")).strip()
+        challenge_id = str(body.get("challengeId", "")).strip()
+        if not user_account or not sms_code or not challenge_id:
+            self._write_json(
+                {"error": "userAccount、smsCode、challengeId 均为必填"},
+                status=HTTPStatus.BAD_REQUEST,
+            )
+            return
+
+        try:
+            account = self.account_registry.get_account(user_account, include_sensitive=True)
+            password = password_override or str(account.get("password") or "")
+            if not password:
+                raise ValueError("该账号没有可用密码，请手动输入")
+            client = self.account_registry.build_auth_client(account)
+            session = self.portal_auth.complete_login(
+                challenge_id=challenge_id,
+                user_account=user_account,
+                password=password,
+                sms_code=sms_code,
+                attendance_client=client,
+            )
+            if password_override:
+                self.account_registry.set_password(user_account, password_override)
+            polling = self.polling_scheduler.refresh_accounts()
+        except (ValueError, AuthError) as exc:
+            self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        self._write_json(
+            {
+                "loggedIn": True,
+                "authMethod": "portal-sms",
+                "userAccount": user_account,
+                "session": build_session_payload(session),
+                "account": self.account_registry.get_account(user_account),
+                "registry": self.account_registry.summarize_registry(),
+                "polling": polling,
             }
         )
 
@@ -2212,11 +2301,13 @@ def main() -> int:
     args = build_parser().parse_args()
     auth_client = AttendanceAuthClient()
     account_registry = AccountRegistry()
+    portal_auth = PortalAuthCoordinator()
     notifier = WeComBotNotifier()
     polling_scheduler = ClockDryRunScheduler(account_registry, notifier=notifier)
     server = ThreadingHTTPServer((args.host, args.port), RebuildLoginHandler)
     server.auth_client = auth_client  # type: ignore[attr-defined]
     server.account_registry = account_registry  # type: ignore[attr-defined]
+    server.portal_auth = portal_auth  # type: ignore[attr-defined]
     server.polling_scheduler = polling_scheduler  # type: ignore[attr-defined]
     server.notifier = notifier  # type: ignore[attr-defined]
     print(f"Serving rebuilt login at http://{args.host}:{args.port}")

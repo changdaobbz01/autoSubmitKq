@@ -473,3 +473,16 @@ APK 静态层里确实还能看到：
 - 首页初始化时额外依赖的接口列表
 
 当前登录链路和用户信息链路已经基本坐实，不影响第一版重建。
+
+## 18. 2026-09-27 门户兼容补充
+
+考勤入口现已并入 `com.inspur.zsyw.hub`。桌面测试台保留上述图片验证码直登，并新增门户短信登录作为备用链路：
+
+1. 门户基地址默认使用 `http://111.48.251.187:8003/zsyw/code`。
+2. `/clientLogin/rest/client/login/verifycode` 发送短信验证码。
+3. `/clientLogin/rest/client/loginwithencrypt` 使用账号、密码、短信验证码和一次性票据登录门户。
+4. 两个门户登录接口的请求和响应均使用 `3DES/CBC/PKCS5Padding` 与 Base64 封装。
+5. 门户 token 使用“掌上考勤”应用公钥进行 RSA PKCS#1 v1.5 加密。
+6. 考勤端依次调用 `/adUser/user/getToken`、`/adUser/user/getWlyyUser`、`/adUser/user/tologinNewV1ByAccount`，最终取得原有考勤 JWT。
+
+当前考勤 H5 实际部署地址为 `https://111.48.251.180:20002/ad/`。由于证书仍签发给 `ad-pro.xyang.xin`，程序请求 API 时使用证书域名 `ad-pro.xyang.xin`，但将 TCP 连接定向到 `111.48.251.180`，保留 SNI、证书链和主机名校验，不使用全局忽略 TLS 的做法。
