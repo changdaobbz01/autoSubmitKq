@@ -51,6 +51,14 @@ docker compose ps
 
 默认访问地址为 `http://服务器地址:8088/`。手机页面第一次打开时需要输入 `MOBILE_ACCESS_KEY`，该口令只存放在浏览器当前会话中。
 
+需要通过二维码分发时，可以把访问口令放在 URL 片段中：
+
+```text
+https://服务器地址/attendance-token/#access=<MOBILE_ACCESS_KEY>
+```
+
+页面会自动应用该口令并保存到当前浏览器会话，随后立即从地址栏移除 `access` 片段。URL 片段不会发送到服务器，但二维码本身仍包含访问口令，只应分享给参与测试的用户。
+
 查看服务日志：
 
 ```powershell

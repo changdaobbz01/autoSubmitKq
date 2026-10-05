@@ -28,8 +28,25 @@ const elements = {
   toastMessage: document.querySelector("#toast-message")
 };
 
+function consumeSharedAccessKey() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const accessKey = (params.get("access") || "").trim();
+  if (!accessKey) {
+    return "";
+  }
+
+  params.delete("access");
+  const remainingHash = params.toString();
+  const cleanUrl = `${window.location.pathname}${window.location.search}${remainingHash ? `#${remainingHash}` : ""}`;
+  window.history.replaceState(window.history.state, "", cleanUrl);
+  sessionStorage.setItem("tokenHubAccessKey", accessKey);
+  return accessKey;
+}
+
+const sharedAccessKey = consumeSharedAccessKey();
+
 const state = {
-  accessKey: sessionStorage.getItem("tokenHubAccessKey") || "",
+  accessKey: sharedAccessKey || sessionStorage.getItem("tokenHubAccessKey") || "",
   challengeId: "",
   challengeAccount: "",
   challengePassword: "",
