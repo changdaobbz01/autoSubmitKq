@@ -101,8 +101,8 @@ function showToast(message, kind = "success") {
   }, 3600);
 }
 
-async function api(path, options = {}) {
-  if (!state.accessKey) {
+async function api(path, options = {}, accessKey = state.accessKey) {
+  if (!accessKey) {
     setConnectionPanel(true);
     throw new Error("请先填写服务访问口令");
   }
@@ -113,7 +113,7 @@ async function api(path, options = {}) {
       ...options,
       headers: {
         "Content-Type": "application/json",
-        "X-Mobile-Access-Key": state.accessKey,
+        "X-Mobile-Access-Key": accessKey,
         ...(options.headers || {})
       }
     });
@@ -128,6 +128,11 @@ async function api(path, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401) {
+      if (accessKey === state.accessKey) {
+        state.accessKey = "";
+        sessionStorage.removeItem("tokenHubAccessKey");
+        updateConnectionState();
+      }
       setConnectionPanel(true);
       throw new Error("服务访问口令无效，请重新填写");
     }
@@ -167,6 +172,7 @@ function clearChallenge(message = "") {
   elements.stepTwoMarker.classList.remove("active");
   if (message) {
     setMessage(message);
+    showToast(message, "error");
   }
   updateTimers();
 }
@@ -309,14 +315,26 @@ async function completeLogin(event) {
   }
 }
 
+function clearInlineError() {
+  if (!elements.inlineMessage.hidden && !elements.inlineMessage.classList.contains("success")) {
+    setMessage("");
+  }
+}
+
 function handleCredentialChange() {
   if (!state.challengeId) {
+    clearInlineError();
     return;
   }
   const current = credentials();
   if (current.userAccount !== state.challengeAccount || current.password !== state.challengePassword) {
     clearChallenge("账号或密码已修改，请重新发送短信验证码");
   }
+}
+
+function handleSmsChange() {
+  clearInlineError();
+  updateTimers();
 }
 
 function initialLetter(account) {
@@ -392,17 +410,23 @@ function renderAccounts(accounts) {
   });
 }
 
-async function loadAccounts() {
-  if (!state.accessKey) {
-    return;
+async function loadAccounts({ accessKey = state.accessKey, promptIfMissing = false } = {}) {
+  if (!accessKey) {
+    if (promptIfMissing) {
+      setConnectionPanel(true);
+      showToast("请先填写服务访问口令", "error");
+    }
+    return false;
   }
   elements.refreshAccounts.classList.add("loading");
   elements.refreshAccounts.disabled = true;
   try {
-    const accounts = await api("/api/mobile/accounts?limit=50");
+    const accounts = await api("/api/mobile/accounts?limit=50", {}, accessKey);
     renderAccounts(accounts);
+    return true;
   } catch (error) {
     showToast(error.message, "error");
+    return false;
   } finally {
     elements.refreshAccounts.classList.remove("loading");
     elements.refreshAccounts.disabled = false;
@@ -416,15 +440,27 @@ elements.connectionToggle.addEventListener("click", () => {
 elements.saveAccessKey.addEventListener("click", async () => {
   const nextKey = elements.accessKey.value.trim();
   if (!nextKey) {
+    setConnectionPanel(true);
+    elements.accessKey.focus();
     showToast("请输入服务访问口令", "error");
     return;
   }
-  state.accessKey = nextKey;
-  sessionStorage.setItem("tokenHubAccessKey", nextKey);
-  updateConnectionState();
-  setConnectionPanel(false);
-  showToast("访问口令已应用");
-  await loadAccounts();
+
+  setButtonBusy(elements.saveAccessKey, true);
+  try {
+    const valid = await loadAccounts({ accessKey: nextKey });
+    if (!valid) {
+      return;
+    }
+    state.accessKey = nextKey;
+    sessionStorage.setItem("tokenHubAccessKey", nextKey);
+    updateConnectionState();
+    setConnectionPanel(false);
+    setMessage("");
+    showToast("访问口令已应用");
+  } finally {
+    setButtonBusy(elements.saveAccessKey, false);
+  }
 });
 
 elements.accessKey.addEventListener("keydown", (event) => {
@@ -443,10 +479,12 @@ elements.togglePassword.addEventListener("click", () => {
 
 elements.userAccount.addEventListener("input", handleCredentialChange);
 elements.password.addEventListener("input", handleCredentialChange);
-elements.smsCode.addEventListener("input", updateTimers);
+elements.smsCode.addEventListener("input", handleSmsChange);
 elements.sendSms.addEventListener("click", requestSms);
 elements.form.addEventListener("submit", completeLogin);
-elements.refreshAccounts.addEventListener("click", loadAccounts);
+elements.refreshAccounts.addEventListener("click", () => {
+  loadAccounts({ promptIfMissing: true });
+});
 
 updateConnectionState();
 updateTimers();
