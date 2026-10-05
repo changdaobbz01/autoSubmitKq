@@ -33,6 +33,7 @@ from attendance_auth_client import (
     SessionData,
 )
 from account_registry import AccountRegistry
+from cloud_token_sync import CloudSyncError, CloudTokenSyncManager
 from normal_clock_debug import DEFAULT_LATITUDE, DEFAULT_LONGITUDE, run_normal_clock_check
 from portal_auth_client import PortalAuthCoordinator, PORTAL_API_URL
 from wecom_bot_notifier import WeComBotNotifier
@@ -357,6 +358,8 @@ def _build_scheduled_slot_payload(
 ) -> tuple[int, dict[str, Any]]:
     slot_payload = dict(slot)
     slot_payload["baseTime"] = f"{slot['hour']:02d}:{slot['minute']:02d}"
+    slot_payload["baseAt"] = int(candidate.timestamp())
+    slot_payload["baseAtText"] = format_timestamp(slot_payload["baseAt"])
     baseline = now or datetime.min
     valid_offsets = _build_valid_random_offsets(candidate, baseline) if apply_random_delay else [0]
     window_offset_minutes = max(valid_offsets) if valid_offsets else 0
@@ -784,10 +787,12 @@ class ClockDryRunScheduler:
         self,
         account_registry: AccountRegistry,
         notifier: WeComBotNotifier | None = None,
+        cloud_token_sync: CloudTokenSyncManager | None = None,
         state_path: Path = POLLING_STATE_PATH,
     ) -> None:
         self.account_registry = account_registry
         self.notifier = notifier
+        self.cloud_token_sync = cloud_token_sync
         self.state_path = state_path
         self._lock = threading.Lock()
         self._wake_event = threading.Event()
@@ -925,6 +930,19 @@ class ClockDryRunScheduler:
         self._wake_event.set()
         return self.get_status_payload()
 
+    def wake(self) -> None:
+        self._wake_event.set()
+
+    def get_schedule_snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "enabled": self._enabled,
+                "allowWeekends": self._allow_weekends,
+                "slots": [dict(slot) for slot in self._slots],
+                "nextRunAt": self._next_run_at,
+                "nextSlot": dict(self._next_slot) if self._next_slot else None,
+            }
+
     def trigger_test(self) -> dict[str, Any]:
         worker: threading.Thread | None = None
         with self._lock:
@@ -1019,13 +1037,25 @@ class ClockDryRunScheduler:
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
             worker: threading.Thread | None = None
+            cloud_sync_request: dict[str, Any] | None = None
             with self._lock:
                 if self._enabled and self._active_run is None:
                     if self._next_run_at is None or self._next_slot is None:
                         self._set_next_run_locked()
                         self._persist_locked()
                     now_epoch = int(time.time())
-                    if self._next_run_at and now_epoch >= self._next_run_at and self._next_slot:
+                    if self.cloud_token_sync is not None:
+                        cloud_sync_request = self.cloud_token_sync.get_due_auto_sync(
+                            self._next_slot,
+                            self._next_run_at,
+                            now_epoch,
+                        )
+                    if (
+                        cloud_sync_request is None
+                        and self._next_run_at
+                        and now_epoch >= self._next_run_at
+                        and self._next_slot
+                    ):
                         worker = self._activate_run_locked(
                             self._build_run_payload(
                                 self._next_slot["key"],
@@ -1035,6 +1065,22 @@ class ClockDryRunScheduler:
                                 slot_payload=self._next_slot,
                             )
                         )
+
+            if cloud_sync_request is not None and self.cloud_token_sync is not None:
+                try:
+                    self.cloud_token_sync.run_sync(
+                        trigger="auto",
+                        auto_slot_key=str(cloud_sync_request.get("slotKey") or ""),
+                    )
+                except CloudSyncError:
+                    pass
+                finally:
+                    with self._lock:
+                        if self._enabled and self._active_run is None:
+                            self._set_next_run_locked()
+                            self._persist_locked()
+                    self._wake_event.set()
+                continue
 
             if worker is not None:
                 worker.start()
@@ -1458,6 +1504,13 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
     def portal_auth(self) -> PortalAuthCoordinator:
         return self.server.portal_auth  # type: ignore[attr-defined]
 
+    @property
+    def cloud_token_sync(self) -> CloudTokenSyncManager:
+        return self.server.cloud_token_sync  # type: ignore[attr-defined]
+
+    def _build_cloud_sync_status(self) -> dict[str, Any]:
+        return self.cloud_token_sync.get_public_status(self.polling_scheduler.get_schedule_snapshot())
+
     def do_GET(self) -> None:
         parsed = urlsplit(self.path)
         if parsed.path == "/api/config":
@@ -1493,6 +1546,9 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/accounts":
             self._write_json(self.account_registry.summarize_registry())
+            return
+        if parsed.path == "/api/cloud-sync":
+            self._write_json(self._build_cloud_sync_status())
             return
         if parsed.path == "/api/accounts/captcha":
             self._handle_get_account_captcha(parsed.query)
@@ -1534,6 +1590,12 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/accounts/clear-tokens":
             self._handle_post_accounts_clear_tokens()
+            return
+        if parsed.path == "/api/cloud-sync/config":
+            self._handle_post_cloud_sync_config()
+            return
+        if parsed.path == "/api/cloud-sync/run":
+            self._handle_post_cloud_sync_run()
             return
         if parsed.path == "/api/notify-config":
             self._handle_post_notify_config()
@@ -1866,6 +1928,38 @@ class RebuildLoginHandler(SimpleHTTPRequestHandler):
         result = self.account_registry.clear_all_tokens()
         self.auth_client.session_store.clear()
         self._write_json(result)
+
+    def _handle_post_cloud_sync_config(self) -> None:
+        body = self._read_json()
+        try:
+            self.cloud_token_sync.save_config(body)
+        except ValueError as exc:
+            self._write_json({"error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+        self.polling_scheduler.wake()
+        self._write_json(self._build_cloud_sync_status())
+
+    def _handle_post_cloud_sync_run(self) -> None:
+        try:
+            sync_result = self.cloud_token_sync.run_sync(trigger="manual")
+            polling = self.polling_scheduler.refresh_accounts()
+        except CloudSyncError as exc:
+            self._write_json(
+                {
+                    "error": str(exc),
+                    "cloudSync": self._build_cloud_sync_status(),
+                },
+                status=HTTPStatus.BAD_GATEWAY,
+            )
+            return
+        self._write_json(
+            {
+                "sync": sync_result,
+                "cloudSync": self._build_cloud_sync_status(),
+                "registry": self.account_registry.summarize_registry(),
+                "polling": polling,
+            }
+        )
 
     def _handle_post_notify_config(self) -> None:
         body = self._read_json()
@@ -2303,13 +2397,19 @@ def main() -> int:
     account_registry = AccountRegistry()
     portal_auth = PortalAuthCoordinator()
     notifier = WeComBotNotifier()
-    polling_scheduler = ClockDryRunScheduler(account_registry, notifier=notifier)
+    cloud_token_sync = CloudTokenSyncManager(account_registry)
+    polling_scheduler = ClockDryRunScheduler(
+        account_registry,
+        notifier=notifier,
+        cloud_token_sync=cloud_token_sync,
+    )
     server = ThreadingHTTPServer((args.host, args.port), RebuildLoginHandler)
     server.auth_client = auth_client  # type: ignore[attr-defined]
     server.account_registry = account_registry  # type: ignore[attr-defined]
     server.portal_auth = portal_auth  # type: ignore[attr-defined]
     server.polling_scheduler = polling_scheduler  # type: ignore[attr-defined]
     server.notifier = notifier  # type: ignore[attr-defined]
+    server.cloud_token_sync = cloud_token_sync  # type: ignore[attr-defined]
     print(f"Serving rebuilt login at http://{args.host}:{args.port}")
     print(f"Proxying remote page base: {BASE_PAGE_URL}")
     print(f"Caching session in: {auth_client.session_store.path}")

@@ -1,0 +1,23 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:tokenhub;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+
+token-hub:
+  security:
+    master-key: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    mobile-access-key: test-mobile-access-key
+    desktop-api-key: test-desktop-api-key
+  attendance:
+    base-url: https://attendance.invalid/iflow/plugins/attendance
+    clock-skew-seconds: 300
+  portal:
+    base-url: http://portal.invalid/zsyw/code
+    area: 湖北
+    app-id: "834786"
+    device-version: "33"
+    device-model: TokenHubTest
+    version-code: "3"
+    challenge-ttl-seconds: 600
+    sms-retry-seconds: 60

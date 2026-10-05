@@ -3,6 +3,7 @@ const state = {
   config: null,
   session: null,
   accounts: null,
+  cloudSync: null,
   polling: null,
   pollingAction: null,
   notify: null,
@@ -53,6 +54,16 @@ const elements = {
   btnToggleAccountList: $("#btn-toggle-account-list"),
   accountsListBanner: $("#accounts-list-banner"),
   btnClearAccountTokens: $("#btn-clear-account-tokens"),
+  cloudSyncBanner: $("#cloud-sync-banner"),
+  cloudSyncSummary: $("#cloud-sync-summary"),
+  cloudSyncDetails: $("#cloud-sync-details"),
+  cloudSyncBaseUrl: $("#cloud-sync-base-url"),
+  cloudSyncApiKey: $("#cloud-sync-api-key"),
+  cloudSyncLeadMinutes: $("#cloud-sync-lead-minutes"),
+  cloudSyncAutoEnabled: $("#cloud-sync-auto-enabled"),
+  btnRefreshCloudSync: $("#btn-refresh-cloud-sync"),
+  btnSaveCloudSync: $("#btn-save-cloud-sync"),
+  btnRunCloudSync: $("#btn-run-cloud-sync"),
   pollingBanner: $("#polling-banner"),
   pollingSummary: $("#polling-summary"),
   pollingActionFeedback: $("#polling-action-feedback"),
@@ -625,6 +636,112 @@ function renderAccounts(registry) {
     })
     .join("");
 }
+
+function renderCloudSync(config, { syncForm = true } = {}) {
+  state.cloudSync = config;
+  const lastSync = config?.lastSync;
+
+  if (config?.syncing) {
+    setBanner(elements.cloudSyncBanner, "neutral", "正在从云端读取并匹配 Token...");
+  } else if (lastSync && !lastSync.ok) {
+    setBanner(elements.cloudSyncBanner, "error", lastSync.summary || "最近一次云端同步失败。");
+  } else if (!config?.configured) {
+    setBanner(elements.cloudSyncBanner, "warning", "请先填写云端服务地址和桌面 API 访问口令。");
+  } else if (config?.autoSyncEnabled && !config?.pollingEnabled) {
+    setBanner(elements.cloudSyncBanner, "neutral", "云端同步已配置；开启打卡轮询后，自动同步计划才会生效。");
+  } else if (config?.autoSyncEnabled) {
+    setBanner(
+      elements.cloudSyncBanner,
+      "success",
+      config.nextAutoSyncAtText
+        ? `自动同步已启用，下次将在 ${config.nextAutoSyncAtText} 执行。`
+        : "自动同步已启用，正在等待下一个打卡时点。",
+    );
+  } else {
+    setBanner(elements.cloudSyncBanner, "neutral", "云端连接信息已保存，当前仅手动同步。");
+  }
+
+  elements.cloudSyncSummary.innerHTML = [
+    card("服务配置", config?.configured ? "已就绪" : "未完成"),
+    card("自动同步", config?.autoSyncEnabled ? "已启用" : "未启用"),
+    card("提前时间", `${config?.leadMinutes || 10} 分钟`),
+    card("下次同步", config?.nextAutoSyncAtText || "-"),
+    card("对应时点", config?.nextAutoSyncSlotText || "-"),
+    card("最近结果", lastSync ? (lastSync.ok ? "成功" : "失败") : "尚未执行"),
+  ].join("");
+
+  if (syncForm) {
+    elements.cloudSyncBaseUrl.value = config?.baseUrl || "http://127.0.0.1:8088";
+    elements.cloudSyncLeadMinutes.value = String(config?.leadMinutes || 10);
+    elements.cloudSyncAutoEnabled.checked = !!config?.autoSyncEnabled;
+    elements.cloudSyncApiKey.value = "";
+  }
+  elements.cloudSyncApiKey.placeholder = config?.hasDesktopApiKey
+    ? `当前已保存：${config.desktopApiKeyMasked || "********"}，留空保持不变`
+    : "填写云端 DESKTOP_API_KEY";
+  elements.btnRunCloudSync.disabled = !!config?.syncing || !config?.configured;
+
+  const rows = [];
+  if (!lastSync) {
+    rows.push(line("尚未执行云端同步。保存配置后，可点击“立即获取云端用户”验证匹配结果。"));
+  } else {
+    rows.push(
+      line(
+        `<strong>${lastSync.ok ? "同步成功" : "同步失败"}</strong><br /><span>${escapeHtml(
+          lastSync.finishedAtText || lastSync.startedAtText || "-",
+        )} / ${escapeHtml(lastSync.trigger === "auto" ? "打卡前自动同步" : "手动同步")}</span><br /><span>${escapeHtml(
+          lastSync.summary || lastSync.error || "-",
+        )}</span>`,
+        lastSync.ok ? "detail-line-success" : "detail-line-danger",
+      ),
+    );
+  }
+
+  if (lastSync?.ok) {
+    rows.push(
+      line(
+        `<strong>匹配统计</strong><br /><span>云端 ${escapeHtml(lastSync.fetchedCount || 0)} 个 / 本地 ${escapeHtml(
+          lastSync.localCount || 0,
+        )} 个 / 匹配 ${escapeHtml(lastSync.matchedCount || 0)} 个 / 更新 ${escapeHtml(
+          lastSync.updatedCount || 0,
+        )} 个 / 未变化 ${escapeHtml(lastSync.unchangedCount || 0)} 个</span>`,
+      ),
+    );
+  }
+
+  const accountRows = [
+    ["已更新 Token", lastSync?.updatedAccounts, "detail-line-success"],
+    ["云端 Token 已过期", lastSync?.expiredCloudAccounts, "detail-line-danger"],
+    ["仅存在云端，未创建本地账号", lastSync?.unmatchedCloudAccounts, "detail-line-neutral"],
+    ["本地暂无云端记录", lastSync?.localWithoutCloudAccounts, ""],
+  ];
+  for (const [label, accounts, tone] of accountRows) {
+    if (!Array.isArray(accounts) || !accounts.length) continue;
+    rows.push(line(`<strong>${label}</strong><br /><span>${escapeHtml(accounts.join("、"))}</span>`, tone));
+  }
+  for (const item of lastSync?.conflicts || []) {
+    rows.push(
+      line(
+        `<strong>安全校验未通过：${escapeHtml(item.userAccount || "未知账号")}</strong><br /><span>${escapeHtml(
+          item.reason || "账号身份不一致",
+        )}</span>`,
+        "detail-line-danger",
+      ),
+    );
+  }
+  for (const item of lastSync?.identityWarnings || []) {
+    rows.push(
+      line(
+        `<strong>${escapeHtml(item.userAccount || "未知账号")} ${escapeHtml(item.field || "资料")}不一致</strong><br /><span>本地：${escapeHtml(
+          item.localValue || "-",
+        )} / 云端：${escapeHtml(item.cloudValue || "-")}；已保留本地值。</span>`,
+        "detail-line-neutral",
+      ),
+    );
+  }
+  elements.cloudSyncDetails.innerHTML = rows.join("");
+}
+
 function renderPolling(polling) {
   state.polling = polling;
   const overview = polling?.accountsOverview || {};
@@ -1141,6 +1258,13 @@ async function loadAccounts({ showOutput = false } = {}) {
     }
   }
   if (state.run.open) renderRunModal();
+  if (showOutput) setOutput(payload);
+  return payload;
+}
+
+async function loadCloudSync({ showOutput = false, syncForm = true } = {}) {
+  const payload = await api("/api/cloud-sync");
+  renderCloudSync(payload, { syncForm });
   if (showOutput) setOutput(payload);
   return payload;
 }
@@ -1683,6 +1807,59 @@ async function clearAllTokens() {
   }
 }
 
+async function saveCloudSync() {
+  const leadMinutes = Number.parseInt(elements.cloudSyncLeadMinutes.value, 10);
+  if (!elements.cloudSyncBaseUrl.value.trim()) {
+    setBanner(elements.cloudSyncBanner, "warning", "请填写云端服务地址。");
+    return;
+  }
+  if (!Number.isInteger(leadMinutes) || leadMinutes < 1 || leadMinutes > 180) {
+    setBanner(elements.cloudSyncBanner, "warning", "自动同步提前分钟数必须在 1-180 之间。");
+    return;
+  }
+
+  setLoading(elements.btnSaveCloudSync, true, "保存中...");
+  try {
+    const payload = await api("/api/cloud-sync/config", {
+      method: "POST",
+      body: {
+        baseUrl: elements.cloudSyncBaseUrl.value.trim(),
+        desktopApiKey: elements.cloudSyncApiKey.value.trim(),
+        autoSyncEnabled: !!elements.cloudSyncAutoEnabled.checked,
+        leadMinutes,
+      },
+    });
+    renderCloudSync(payload);
+    setBanner(elements.cloudSyncBanner, "success", "云端同步设置已保存。");
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.cloudSyncBanner, "error", getErrorMessage(error));
+  } finally {
+    setLoading(elements.btnSaveCloudSync, false);
+  }
+}
+
+async function runCloudSync() {
+  setLoading(elements.btnRunCloudSync, true, "同步中...");
+  try {
+    const payload = await api("/api/cloud-sync/run", { method: "POST" });
+    renderCloudSync(payload.cloudSync || state.cloudSync || {});
+    renderAccounts(payload.registry || state.accounts || {});
+    renderPolling(payload.polling || state.polling || {});
+    setBanner(elements.cloudSyncBanner, "success", payload.sync?.summary || "云端 Token 同步完成。");
+    setOutput(payload);
+  } catch (error) {
+    setBanner(elements.cloudSyncBanner, "error", getErrorMessage(error));
+    try {
+      await loadCloudSync({ syncForm: false });
+    } catch {
+      // Keep the actionable request error visible when status refresh also fails.
+    }
+  } finally {
+    setLoading(elements.btnRunCloudSync, false);
+  }
+}
+
 async function saveAutostart() {
   setLoading(elements.btnSaveAutostart, true, "保存中...");
   try {
@@ -1738,7 +1915,13 @@ async function testNotify() {
 
 async function safeAutoRefresh() {
   try {
-    await Promise.all([loadSession({ refreshCaptcha: false }), loadAccounts(), loadPolling(), loadNotify()]);
+    await Promise.all([
+      loadSession({ refreshCaptcha: false }),
+      loadAccounts(),
+      loadCloudSync({ syncForm: false }),
+      loadPolling(),
+      loadNotify(),
+    ]);
   } catch (error) {
     console.error(error);
   }
@@ -1794,6 +1977,16 @@ function bind() {
     syncAccountList(state.accounts || { totalCount: 0 });
   });
   elements.btnClearAccountTokens.addEventListener("click", openClearTokensModal);
+
+  elements.btnRefreshCloudSync.addEventListener("click", () =>
+    loadCloudSync({ showOutput: true }).catch((error) => setBanner(elements.cloudSyncBanner, "error", getErrorMessage(error))),
+  );
+  elements.btnSaveCloudSync.addEventListener("click", () =>
+    saveCloudSync().catch((error) => setBanner(elements.cloudSyncBanner, "error", getErrorMessage(error))),
+  );
+  elements.btnRunCloudSync.addEventListener("click", () =>
+    runCloudSync().catch((error) => setBanner(elements.cloudSyncBanner, "error", getErrorMessage(error))),
+  );
 
   elements.btnRefreshPolling.addEventListener("click", () => loadPolling({ showOutput: true }).catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
   elements.btnStartPolling.addEventListener("click", () => startPolling().catch((error) => setBanner(elements.pollingBanner, "error", getErrorMessage(error))));
@@ -1882,7 +2075,14 @@ async function boot() {
   setOutput("正在读取接口数据...");
   try {
     await loadConfig();
-    await Promise.all([loadSession({ refreshCaptcha: true }), loadAccounts(), loadPolling(), loadAutostart(), loadNotify()]);
+    await Promise.all([
+      loadSession({ refreshCaptcha: true }),
+      loadAccounts(),
+      loadCloudSync(),
+      loadPolling(),
+      loadAutostart(),
+      loadNotify(),
+    ]);
     setOutput({
       message: "前端已完成初始化。",
       loadedAt: new Date().toLocaleString("zh-CN", { hour12: false }),

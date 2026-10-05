@@ -1,0 +1,59 @@
+name: attendance-token-hub
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tokenhub}
+      POSTGRES_USER: ${POSTGRES_USER:-tokenhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+    volumes:
+      - tokenhub-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: ./Api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-tokenhub}
+      DATABASE_USER: ${POSTGRES_USER:-tokenhub}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 中设置 POSTGRES_PASSWORD}
+      TOKEN_MASTER_KEY: ${TOKEN_MASTER_KEY:?请在 .env 中设置 TOKEN_MASTER_KEY}
+      MOBILE_ACCESS_KEY: ${MOBILE_ACCESS_KEY:?请在 .env 中设置 MOBILE_ACCESS_KEY}
+      DESKTOP_API_KEY: ${DESKTOP_API_KEY:?请在 .env 中设置 DESKTOP_API_KEY}
+      PORTAL_API_URL: ${PORTAL_API_URL:-http://111.48.251.187:8003/zsyw/code}
+      PORTAL_AREA: ${PORTAL_AREA:-湖北}
+      PORTAL_APP_ID: ${PORTAL_APP_ID:-834786}
+      ATTENDANCE_API_URL: ${ATTENDANCE_API_URL:-https://ad-pro.xyang.xin:20002/iflow/plugins/attendance}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}
+    extra_hosts:
+      - "ad-pro.xyang.xin:111.48.251.180"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  web:
+    build:
+      context: ./app
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8088}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  tokenhub-db:

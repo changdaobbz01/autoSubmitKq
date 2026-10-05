@@ -1,0 +1,4 @@
+.env
+Api/data/
+Api/target/
+*.log

@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: attendance-token-hub
+  datasource:
+    url: ${DATABASE_URL:jdbc:h2:file:./data/tokenhub;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH}
+    username: ${DATABASE_USER:sa}
+    password: ${DATABASE_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+server:
+  forward-headers-strategy: framework
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+token-hub:
+  security:
+    master-key: ${TOKEN_MASTER_KEY:}
+    mobile-access-key: ${MOBILE_ACCESS_KEY:}
+    desktop-api-key: ${DESKTOP_API_KEY:}
+  attendance:
+    base-url: ${ATTENDANCE_API_URL:https://ad-pro.xyang.xin:20002/iflow/plugins/attendance}
+    clock-skew-seconds: ${TOKEN_CLOCK_SKEW_SECONDS:300}
+  portal:
+    base-url: ${PORTAL_API_URL:http://111.48.251.187:8003/zsyw/code}
+    area: ${PORTAL_AREA:湖北}
+    app-id: ${PORTAL_APP_ID:834786}
+    device-version: ${PORTAL_DEVICE_VERSION:33}
+    device-model: ${PORTAL_DEVICE_MODEL:AttendanceTokenHub}
+    version-code: ${PORTAL_VERSION_CODE:3}
+    challenge-ttl-seconds: ${PORTAL_CHALLENGE_TTL_SECONDS:600}
+    sms-retry-seconds: ${PORTAL_SMS_RETRY_SECONDS:60}
+
+logging:
+  level:
+    com.attendance.tokenhub: INFO

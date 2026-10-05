@@ -101,7 +101,54 @@
           <div id="import-result-summary" class="summary-grid"></div>
           <div id="import-warning-list" class="detail-line-list"></div>
           <div class="hint-text">
-            支持列名：`账号 / 用户名 / userAccount`、`密码 / password`、`姓名`、`部门`、`启用`、`备注`。
+            支持列名：`账号 / 用户名 / userAccount`、`密码 / password`、`姓名`、`部门`、`启用`、`备注`、
+            `照片地址`、`打卡地址信息`、`纬度`、`经度`。
+          </div>
+        </section>
+
+        <section class="card cloud-sync-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Cloud Token</p>
+              <h2>云端 Token 同步</h2>
+            </div>
+            <button id="btn-refresh-cloud-sync" class="ghost-button" type="button">刷新同步状态</button>
+          </div>
+          <div id="cloud-sync-banner" class="session-banner neutral">正在读取云端同步配置...</div>
+          <div id="cloud-sync-summary" class="summary-grid"></div>
+          <div class="field-grid cloud-sync-fields">
+            <label class="field">
+              <span>云端服务地址</span>
+              <input id="cloud-sync-base-url" type="url" autocomplete="off" placeholder="http://127.0.0.1:8088" />
+            </label>
+            <label class="field">
+              <span>桌面 API 访问口令</span>
+              <input id="cloud-sync-api-key" type="password" autocomplete="new-password" placeholder="填写云端 DESKTOP_API_KEY" />
+            </label>
+            <label class="field">
+              <span>打卡前自动同步（分钟）</span>
+              <input id="cloud-sync-lead-minutes" type="number" min="1" max="180" step="1" value="10" />
+            </label>
+            <label class="cloud-sync-option">
+              <input id="cloud-sync-auto-enabled" type="checkbox" />
+              <span>
+                <strong>启用打卡前自动同步</strong>
+                <small>按每个打卡基准时点提前执行一次，完成后重算本次轮询账号计划。</small>
+              </span>
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="btn-save-cloud-sync" class="primary-button" type="button">保存同步设置</button>
+            <button id="btn-run-cloud-sync" class="secondary-button" type="button">立即获取云端用户</button>
+          </div>
+          <div class="detail-block">
+            <div class="detail-block-title">最近一次同步结果</div>
+            <div id="cloud-sync-details" class="detail-line-list"></div>
+          </div>
+          <div class="cloud-data-boundary">
+            <strong>数据边界</strong>
+            <span>云端只提供账号身份、Token 和到期时间；照片地址、打卡地址信息、纬度、经度等继续以本地 xlsx 为准。</span>
+            <span>仅匹配本地已有的同名账号，云端独有账号不会自动创建，也不会直接加入轮询。</span>
           </div>
         </section>
 

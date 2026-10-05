@@ -8,6 +8,7 @@
 - 真实打卡单账号提交
 - 定时轮询
 - 企业微信群机器人通知
+- 手机 Web 云端 Token 同步
 - 便携版打包分发
 
 ## 项目结构
@@ -20,6 +21,8 @@
   综合运维门户短信登录、3DES 通信和门户到考勤的单点换票
 - `account_registry.py`
   多账号注册表、`xlsx` 导入、照片路径与账号状态管理
+- `cloud_token_sync.py`
+  云端 Token 全量读取、本地账号匹配、JWT 身份校验与打卡前自动同步
 - `normal_clock_debug.py`
   正常打卡调试与提交流程封装
 - `wecom_bot_notifier.py`
@@ -53,7 +56,10 @@ http://127.0.0.1:8765
 - 支持图片验证码登录和多账号 token 刷新
 - 支持通过综合运维门户短信验证码换取考勤 token
 - 考勤 HTTPS 默认校验证书域名 `ad-pro.xyang.xin`，实际连接新服务 IP `111.48.251.180`
-- 支持导入 `xlsx` 账号表，自动识别账号、密码、姓名、部门、照片路径
+- 支持导入 `xlsx` 账号表，自动识别账号、密码、姓名、部门、照片地址、打卡地址信息、纬度和经度
+- 支持手动获取云端用户 Token，并按账号与本地表格安全匹配
+- 支持在每个打卡时点前按配置分钟数自动同步，完成后重算当次轮询账号计划
+- 云端同步只更新本地账号会话，不覆盖密码、照片、地址、经纬度、启用状态、备注或通知配置
 - 支持单账号真实打卡
 - 支持轮询模式切换
   - `仅调测`
@@ -79,7 +85,17 @@ powershell -ExecutionPolicy Bypass -File .\build_portable.ps1
 powershell -ExecutionPolicy Bypass -File .\build_release.ps1
 ```
 
-该脚本会先生成不含 `.attendance_auth` 的 `releases/AttendanceRebuild-portable.zip`，再把本机原有运行数据恢复到 `dist/AttendanceRebuild/`，发布包不会携带账号、token 或通知配置。
+该脚本会先生成不含 `.attendance_auth` 的 `releases/AttendanceRebuild-portable.zip`，再把本机原有运行数据恢复到 `dist/AttendanceRebuild/`，发布包不会携带账号、token、云端 API 访问口令或通知配置。
+
+## 云端 Token 同步
+
+本地页面的“云端 Token 同步”区域需要填写手机 Web 服务地址及其 `DESKTOP_API_KEY`。同步策略为：
+
+- 以本地 `xlsx` 导入账号为主表，按不区分大小写的 `userAccount` 匹配。
+- 同时校验云端记录账号、JWT 内账号和本地账号；不一致时拒绝写入。
+- 云端独有账号只显示为未匹配，不会自动创建或进入轮询。
+- 云端姓名、部门只用于差异提示，不覆盖本地资料。
+- 每次手动同步和打卡前自动同步都读取完整云端快照，避免本地后来导入账号时错过早期 revision。
 
 便携版运行方式：
 

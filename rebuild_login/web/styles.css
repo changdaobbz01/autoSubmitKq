@@ -178,6 +178,7 @@ body {
 }
 
 .accounts-card,
+.cloud-sync-card,
 .polling-card,
 .autostart-card,
 .notify-card,
@@ -658,6 +659,7 @@ button.is-current:disabled {
 }
 
 .import-card,
+.cloud-sync-card,
 .accounts-card,
 .autostart-card,
 .notify-card {
@@ -666,6 +668,63 @@ button.is-current:disabled {
   min-width: 0;
   display: grid;
   gap: 16px;
+}
+
+.cloud-sync-fields {
+  align-items: end;
+}
+
+.cloud-sync-option {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(18, 34, 58, 0.08);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(216, 240, 255, 0.72), rgba(154, 240, 216, 0.28));
+  color: var(--ink-body);
+}
+
+.cloud-sync-option input {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  accent-color: var(--cobalt);
+}
+
+.cloud-sync-option span {
+  display: grid;
+  gap: 4px;
+}
+
+.cloud-sync-option strong {
+  color: var(--ink-strong);
+  font-size: 14px;
+}
+
+.cloud-sync-option small {
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.cloud-data-boundary {
+  display: grid;
+  gap: 7px;
+  padding: 16px 18px;
+  border: 1px solid rgba(31, 142, 105, 0.16);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(154, 240, 216, 0.25), rgba(255, 241, 204, 0.4)),
+    rgba(255, 255, 255, 0.78);
+  color: var(--ink-body);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.cloud-data-boundary strong {
+  color: #0f5a46;
+  font-size: 14px;
 }
 
 .notify-option-grid {
@@ -1108,6 +1167,7 @@ body.modal-open {
 
   .session-card,
   .import-card,
+  .cloud-sync-card,
   .accounts-card,
   .polling-card,
   .autostart-card,

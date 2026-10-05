@@ -12,6 +12,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -95,10 +96,16 @@ class SessionStore:
 
     def save(self, session: SessionData) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(asdict(session), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        temp_path = self.path.with_name(f".{self.path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temp_path.write_text(
+                json.dumps(asdict(session), ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temp_path.replace(self.path)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()
 
     def clear(self) -> None:
         if self.path.exists():

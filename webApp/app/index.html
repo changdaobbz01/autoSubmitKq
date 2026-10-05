@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#123c39">
+    <meta name="description" content="通过门户短信验证安全更新考勤 Token">
+    <title>考勤凭证助手</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <main class="page-shell">
+      <header class="hero reveal">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div>
+          <p class="eyebrow">ATTENDANCE TOKEN HUB</p>
+          <h1>更新考勤凭证</h1>
+          <p class="hero-copy">在手机上完成门户短信验证，新的考勤 Token 会安全同步给本地程序。</p>
+        </div>
+      </header>
+
+      <section class="connection-card reveal" aria-labelledby="connection-title">
+        <button class="connection-toggle" id="connection-toggle" type="button" aria-expanded="false" aria-controls="connection-panel">
+          <span class="connection-summary">
+            <span class="status-dot" id="connection-dot"></span>
+            <span>
+              <strong id="connection-title">服务连接</strong>
+              <small id="connection-label">请先填写访问口令</small>
+            </span>
+          </span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5"/></svg>
+        </button>
+        <div class="connection-panel" id="connection-panel" hidden>
+          <label class="field-label" for="access-key">服务访问口令</label>
+          <div class="secret-row">
+            <input id="access-key" type="password" autocomplete="off" maxlength="256" placeholder="由管理员提供">
+            <button class="text-button" id="save-access-key" type="button">应用</button>
+          </div>
+          <p class="field-hint">仅保存在当前浏览器会话，关闭页面后自动清除。</p>
+        </div>
+      </section>
+
+      <section class="auth-card reveal" aria-labelledby="auth-title">
+        <div class="card-heading">
+          <div>
+            <p class="step-kicker" id="step-kicker">步骤 1 / 2</p>
+            <h2 id="auth-title">验证门户账号</h2>
+          </div>
+          <div class="step-track" aria-hidden="true">
+            <span class="active"></span>
+            <span id="step-two-marker"></span>
+          </div>
+        </div>
+
+        <form id="auth-form" novalidate>
+          <div class="field-group">
+            <label class="field-label" for="user-account">门户账号</label>
+            <input id="user-account" name="userAccount" type="text" autocomplete="username" autocapitalize="none" maxlength="128" placeholder="请输入门户账号" required>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="password">门户密码</label>
+            <div class="password-wrap">
+              <input id="password" name="password" type="password" autocomplete="current-password" maxlength="512" placeholder="请输入门户密码" required>
+              <button class="visibility-button" id="toggle-password" type="button" aria-label="显示密码">
+                <svg class="eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>
+                <svg class="eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18M10.6 6.1A9.9 9.9 0 0 1 12 6c6.1 0 9.5 6 9.5 6a14.8 14.8 0 0 1-2.1 2.8M6.2 6.3C3.8 8 2.5 12 2.5 12s3.4 6 9.5 6a9.3 9.3 0 0 0 3.2-.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <label class="check-row" for="save-password">
+            <input id="save-password" type="checkbox" checked>
+            <span class="check-box" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="m3 8 3 3 7-7"/></svg></span>
+            <span>
+              <strong>加密保存密码</strong>
+              <small id="password-save-hint">方便后续维护；取消后，本次成功登录会删除云端已存密码。</small>
+            </span>
+          </label>
+
+          <button class="primary-button" id="send-sms" type="button">
+            <span class="button-label">发送短信验证码</span>
+            <span class="button-spinner" aria-hidden="true"></span>
+          </button>
+
+          <div class="verification-panel" id="verification-panel" hidden>
+            <div class="verification-divider">
+              <span></span>
+              <p>验证码已发送</p>
+              <span></span>
+            </div>
+            <div class="field-group code-group">
+              <label class="field-label" for="sms-code">短信验证码</label>
+              <div class="code-row">
+                <input id="sms-code" name="smsCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="请输入验证码">
+                <span class="countdown" id="challenge-countdown">10:00</span>
+              </div>
+            </div>
+            <button class="primary-button accent" id="complete-login" type="submit">
+              <span class="button-label">验证并更新 Token</span>
+              <span class="button-spinner" aria-hidden="true"></span>
+            </button>
+          </div>
+        </form>
+
+        <div class="inline-message" id="inline-message" role="status" aria-live="polite" hidden></div>
+        <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>账号凭证经加密保存，页面不会展示 Token 或已保存的密码。</p>
+      </section>
+
+      <section class="accounts-section reveal" aria-labelledby="accounts-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow dark">SYNC STATUS</p>
+            <h2 id="accounts-title">最近更新</h2>
+          </div>
+          <button class="icon-button" id="refresh-accounts" type="button" aria-label="刷新账号列表">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8.4A7 7 0 0 1 18.7 7L20 9M4 15l1.3 2A7 7 0 0 0 18 15.6"/></svg>
+          </button>
+        </div>
+        <div class="accounts-list" id="accounts-list">
+          <div class="empty-state" id="accounts-empty">
+            <span class="empty-symbol" aria-hidden="true">✓</span>
+            <p>填写访问口令后，可查看已同步账号。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+      <span class="toast-icon" aria-hidden="true">✓</span>
+      <span id="toast-message"></span>
+    </div>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>
