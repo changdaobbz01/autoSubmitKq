@@ -650,6 +650,7 @@ input:focus {
   background: transparent;
   cursor: pointer;
   place-items: center;
+  transform: translateY(-50%);
 }
 
 .visibility-button:hover {
