@@ -1,5 +1,7 @@
 "use strict";
 
+const appBaseUrl = new URL(".", window.location.href);
+
 const elements = {
   connectionToggle: document.querySelector("#connection-toggle"),
   connectionPanel: document.querySelector("#connection-panel"),
@@ -90,7 +92,7 @@ async function api(path, options = {}) {
 
   let response;
   try {
-    response = await fetch(path, {
+    response = await fetch(new URL(path.replace(/^\/+/, ""), appBaseUrl), {
       ...options,
       headers: {
         "Content-Type": "application/json",
