@@ -515,6 +515,14 @@ class CloudTokenSyncManager:
         duplicate_local_count = sum(1 for items in local_by_key.values() if len(items) > 1)
         finished_at = int(time.time())
         matched_count = len(matched_keys)
+        summary = (
+            f"云端读取 {len(cloud_by_key)} 个账号，本地匹配 {matched_count} 个，"
+            f"更新 token {len(updated_accounts)} 个，保持不变 {len(unchanged_accounts)} 个。"
+        )
+        if updated_accounts:
+            summary += f" 已更新本地 Token：{'、'.join(updated_accounts)}。"
+        if unchanged_accounts:
+            summary += f" Token 未变化：{'、'.join(unchanged_accounts)}。"
         report = {
             "ok": True,
             "trigger": trigger,
@@ -544,10 +552,7 @@ class CloudTokenSyncManager:
             "conflicts": conflicts,
             "identityWarnings": identity_warnings,
             "warnings": malformed_cloud_items,
-            "summary": (
-                f"云端读取 {len(cloud_by_key)} 个账号，本地匹配 {matched_count} 个，"
-                f"更新 token {len(updated_accounts)} 个，保持不变 {len(unchanged_accounts)} 个。"
-            ),
+            "summary": summary,
         }
         return report
 

@@ -640,6 +640,18 @@ function renderAccounts(registry) {
 function renderCloudSync(config, { syncForm = true } = {}) {
   state.cloudSync = config;
   const lastSync = config?.lastSync;
+  let recentResult = "尚未执行";
+  if (lastSync) {
+    if (!lastSync.ok) {
+      recentResult = "失败";
+    } else if (Number(lastSync.updatedCount || 0) > 0) {
+      recentResult = `已更新 ${lastSync.updatedCount} 个 Token`;
+    } else if (Number(lastSync.matchedCount || 0) > 0) {
+      recentResult = "Token 无变化";
+    } else {
+      recentResult = "无匹配账号";
+    }
+  }
 
   if (config?.syncing) {
     setBanner(elements.cloudSyncBanner, "neutral", "正在从云端读取并匹配 Token...");
@@ -667,7 +679,7 @@ function renderCloudSync(config, { syncForm = true } = {}) {
     card("提前时间", `${config?.leadMinutes || 10} 分钟`),
     card("下次同步", config?.nextAutoSyncAtText || "-"),
     card("对应时点", config?.nextAutoSyncSlotText || "-"),
-    card("最近结果", lastSync ? (lastSync.ok ? "成功" : "失败") : "尚未执行"),
+    card("最近结果", recentResult),
   ].join("");
 
   if (syncForm) {
@@ -711,6 +723,7 @@ function renderCloudSync(config, { syncForm = true } = {}) {
 
   const accountRows = [
     ["已更新 Token", lastSync?.updatedAccounts, "detail-line-success"],
+    ["Token 未变化", lastSync?.unchangedAccounts, "detail-line-neutral"],
     ["云端 Token 已过期", lastSync?.expiredCloudAccounts, "detail-line-danger"],
     ["仅存在云端，未创建本地账号", lastSync?.unmatchedCloudAccounts, "detail-line-neutral"],
     ["本地暂无云端记录", lastSync?.localWithoutCloudAccounts, ""],

@@ -132,12 +132,49 @@ class CloudTokenSyncTests(unittest.TestCase):
 
         self.assertEqual(before, self.registry.load())
         self.assertEqual(1, report["updatedCount"])
+        self.assertEqual(["testuser01"], report["updatedAccounts"])
+        self.assertIn("已更新本地 Token：testuser01", report["summary"])
         self.assertEqual(["cloud-only"], report["unmatchedCloudAccounts"])
         session = SessionStore(self.registry.get_session_path("testuser01")).load()
         self.assertIsNotNone(session)
         self.assertEqual(token, session.token)
         self.assertEqual("testuser01", session.user_account)
         self.assertEqual(exp, session.token_exp)
+
+    def test_sync_reports_account_when_token_is_unchanged(self) -> None:
+        exp = int(time.time()) + 3600
+        token = _jwt("testuser01", exp)
+        store = SessionStore(self.registry.get_session_path("testuser01"))
+        store.save(
+            SessionData(
+                token=token,
+                token_exp=exp,
+                user_account="testuser01",
+                user_name="本地姓名",
+                real_name="本地姓名",
+                department="本地部门",
+                saved_at=int(time.time()),
+                user_info={},
+            )
+        )
+        snapshot = {
+            "latestRevision": 1,
+            "items": [
+                {
+                    "userAccount": "testuser01",
+                    "status": "active",
+                    "token": token,
+                    "tokenExpiresAt": datetime.fromtimestamp(exp, timezone.utc).isoformat(),
+                    "revision": 1,
+                }
+            ],
+        }
+
+        report = self._manager(snapshot).run_sync()
+
+        self.assertEqual(0, report["updatedCount"])
+        self.assertEqual(["testuser01"], report["unchangedAccounts"])
+        self.assertIn("Token 未变化：testuser01", report["summary"])
 
     def test_sync_rejects_jwt_account_mismatch(self) -> None:
         exp = int(time.time()) + 3600
