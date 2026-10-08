@@ -30,7 +30,13 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(new ApiError("请求参数格式无效", Instant.now()));
     }
 
-    @ExceptionHandler({RemoteCallException.class, IllegalArgumentException.class, IllegalStateException.class})
+    @ExceptionHandler(RemoteCallException.class)
+    ResponseEntity<ApiError> remoteCall(RemoteCallException exception) {
+        LOGGER.warn("Remote operation failed: {}", exception.getMessage());
+        return ResponseEntity.badRequest().body(new ApiError(exception.getMessage(), Instant.now()));
+    }
+
+    @ExceptionHandler({IllegalArgumentException.class, IllegalStateException.class})
     ResponseEntity<ApiError> badRequest(RuntimeException exception) {
         return ResponseEntity.badRequest().body(new ApiError(exception.getMessage(), Instant.now()));
     }

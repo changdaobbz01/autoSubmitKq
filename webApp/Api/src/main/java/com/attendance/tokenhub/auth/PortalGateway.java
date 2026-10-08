@@ -114,8 +114,12 @@ public class PortalGateway {
     }
 
     private JsonNode postEncrypted(String path, Map<String, String> body) {
-        String raw = http.postText(uri(path), crypto.encryptJson(body), Map.of());
-        return http.parseJson(crypto.decryptText(raw));
+        try {
+            String raw = http.postText(uri(path), crypto.encryptJson(body), Map.of());
+            return http.parseJson(crypto.decryptText(raw));
+        } catch (RemoteCallException exception) {
+            throw new RemoteCallException("门户服务请求失败：" + exception.getMessage(), exception);
+        }
     }
 
     private URI uri(String path) {

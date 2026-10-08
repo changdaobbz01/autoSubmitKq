@@ -1,19 +1,25 @@
 package com.attendance.tokenhub.remote;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 public class JsonHttpClient {
+    private static final Logger LOGGER = LoggerFactory.getLogger(JsonHttpClient.class);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
 
     private final HttpClient client;
@@ -91,9 +97,33 @@ public class JsonHttpClient {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new RemoteCallException("远程请求被中断", exception);
+        } catch (HttpConnectTimeoutException exception) {
+            logNetworkFailure(request, exception);
+            throw new RemoteCallException("远程服务连接超时，请联系管理员检查服务器网络", exception);
+        } catch (HttpTimeoutException exception) {
+            logNetworkFailure(request, exception);
+            throw new RemoteCallException("远程服务响应超时，请稍后重试", exception);
+        } catch (ConnectException exception) {
+            logNetworkFailure(request, exception);
+            throw new RemoteCallException("无法连接远程服务，请联系管理员检查服务器网络", exception);
         } catch (IOException exception) {
-            throw new RemoteCallException("远程网络请求失败", exception);
+            logNetworkFailure(request, exception);
+            throw new RemoteCallException("远程网络请求失败，请稍后重试", exception);
         }
+    }
+
+    private static void logNetworkFailure(HttpRequest request, IOException exception) {
+        LOGGER.warn(
+                "Remote request failed: method={}, endpoint={}, cause={}",
+                request.method(),
+                safeEndpoint(request.uri()),
+                exception.getClass().getSimpleName());
+    }
+
+    private static String safeEndpoint(URI uri) {
+        String port = uri.getPort() < 0 ? "" : ":" + uri.getPort();
+        String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+        return uri.getScheme() + "://" + uri.getHost() + port + path;
     }
 
     private static String formEncode(String value) {
