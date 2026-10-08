@@ -32,17 +32,23 @@ services:
       PORTAL_AREA: ${PORTAL_AREA:-湖北}
       PORTAL_APP_ID: ${PORTAL_APP_ID:-834786}
       ATTENDANCE_API_URL: ${ATTENDANCE_API_URL:-https://ad-pro.xyang.xin:20002/iflow/plugins/attendance}
-      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8}
+      JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8}
     extra_hosts:
       - "ad-pro.xyang.xin:111.48.251.180"
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health"]
+      test:
+        - CMD-SHELL
+        - >-
+          curl --fail --silent --show-error
+          --header "X-Mobile-Access-Key: $${MOBILE_ACCESS_KEY}"
+          "http://localhost:8080/api/mobile/accounts?limit=1"
+          > /dev/null
       interval: 15s
       timeout: 5s
-      retries: 10
+      retries: 3
       start_period: 40s
 
   web:
