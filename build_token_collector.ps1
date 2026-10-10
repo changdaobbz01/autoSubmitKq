@@ -13,6 +13,7 @@ $packageDir = Join-Path $distRoot $appName
 $releasesDir = Join-Path $projectRoot "releases"
 $webAssets = Join-Path $projectRoot "token_uploader\web"
 $portableReadme = Join-Path $projectRoot "token_uploader\portable_README.txt"
+$shortcutInstaller = Join-Path $projectRoot "token_uploader\Create-Desktop-Shortcut.cmd"
 $ffiDll = Join-Path (Split-Path -Parent $PythonExe) "Library\bin\ffi.dll"
 
 function Assert-WorkspaceChild([string]$Path) {
@@ -31,6 +32,9 @@ if (-not (Test-Path -LiteralPath $PythonExe)) {
 }
 if (-not (Test-Path -LiteralPath $ffiDll)) {
     throw "Conda libffi runtime not found: $ffiDll"
+}
+if (-not (Test-Path -LiteralPath $shortcutInstaller)) {
+    throw "Desktop shortcut installer not found: $shortcutInstaller"
 }
 
 if (Test-Path -LiteralPath $buildRoot) {
@@ -81,6 +85,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Copy-Item -LiteralPath $portableReadme -Destination (Join-Path $packageDir "README.txt") -Force
+Copy-Item -LiteralPath $shortcutInstaller -Destination (Join-Path $packageDir "Create-Desktop-Shortcut.cmd") -Force
 
 if (-not $ZipPath) {
     $ZipPath = Join-Path $releasesDir "$appName-portable.zip"

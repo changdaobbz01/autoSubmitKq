@@ -42,4 +42,6 @@ dist/AttendanceTokenCollector/
 releases/AttendanceTokenCollector-portable.zip
 ```
 
+解压后可双击 `Create-Desktop-Shortcut.cmd`，在当前用户桌面创建“考勤 Token 采集器”快捷方式。如果之后移动程序文件夹，重新运行该脚本即可更新快捷方式。
+
 便携包不包含访问口令、账号、密码、Token 或运行缓存。
