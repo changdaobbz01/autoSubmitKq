@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>考勤 Token 采集器</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="backdrop" aria-hidden="true">
+      <span class="glow glow-one"></span>
+      <span class="glow glow-two"></span>
+    </div>
+
+    <main class="app-shell">
+      <header class="hero reveal">
+        <div class="hero-grid" aria-hidden="true"></div>
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 48 48">
+              <path d="M14 23.5a10 10 0 0 1 20 0v3"/>
+              <rect x="10" y="25" width="28" height="16" rx="6"/>
+              <path d="m19 33 3.3 3.2L30 29"/>
+            </svg>
+          </div>
+          <div class="brand-copy">
+            <span>ATTENDANCE ACCESS</span>
+            <strong>考勤 Token 采集器</strong>
+          </div>
+          <span class="version-pill" id="version-pill">V1.0</span>
+        </div>
+
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> DEVICE-SIDE AUTH</p>
+          <h1>在本机完成验证<br><em>Token 自动汇入云端</em></h1>
+          <p>门户登录与考勤换票都使用当前电脑网络，云端仅负责加密收集和提供本地考勤程序同步。</p>
+        </div>
+
+        <div class="route-strip" aria-label="处理流程">
+          <div class="route-node active">
+            <span class="route-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            </span>
+            <span><small>STEP 01</small><strong>本机直连门户</strong></span>
+          </div>
+          <span class="route-arrow" aria-hidden="true">→</span>
+          <div class="route-node">
+            <span class="route-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-8A6 6 0 0 0 6.1 8.5 4.8 4.8 0 0 0 7 18Z"/><path d="m9 13 3-3 3 3M12 10v6"/></svg>
+            </span>
+            <span><small>STEP 02</small><strong>云端加密归集</strong></span>
+          </div>
+        </div>
+      </header>
+
+      <section class="panel connection-panel reveal" aria-labelledby="cloud-title">
+        <div class="panel-heading">
+          <div class="heading-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 12a4 4 0 0 1 4-4h3M16 12a4 4 0 0 1-4 4H9"/><path d="M14 5h3a4 4 0 0 1 0 8h-1M10 19H7a4 4 0 0 1 0-8h1"/></svg>
+          </div>
+          <div>
+            <p class="section-kicker">CLOUD DESTINATION</p>
+            <h2 id="cloud-title">云端收集服务</h2>
+          </div>
+          <span class="connection-state" id="connection-state"><i></i>待检测</span>
+        </div>
+
+        <div class="field-group compact">
+          <label for="cloud-url">云端服务地址</label>
+          <div class="input-shell">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+            <input id="cloud-url" type="url" autocomplete="off" spellcheck="false" placeholder="https://example.com/attendance-token/">
+          </div>
+        </div>
+
+        <div class="field-group compact">
+          <label for="access-key">云端访问口令</label>
+          <div class="inline-action">
+            <div class="input-shell">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="12" r="4"/><path d="M12 12h9M18 12v3M15 12v2"/></svg>
+              <input id="access-key" type="password" autocomplete="off" maxlength="512" placeholder="由管理员提供">
+            </div>
+            <button class="secondary-button" id="test-cloud" type="button">
+              <span>检测</span><i class="spinner"></i>
+            </button>
+          </div>
+        </div>
+        <p class="safe-note">访问口令仅保留在本次程序会话中，关闭窗口后自动清除。</p>
+      </section>
+
+      <section class="panel auth-panel reveal" aria-labelledby="auth-title">
+        <div class="panel-heading auth-heading">
+          <div class="heading-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/><path d="m18 5 3 3-3 3"/></svg>
+          </div>
+          <div>
+            <p class="section-kicker" id="step-kicker">STEP 1 / 2</p>
+            <h2 id="auth-title">验证门户账号</h2>
+          </div>
+          <div class="step-track" aria-hidden="true"><span class="active"></span><span id="step-two"></span></div>
+        </div>
+
+        <form id="auth-form" novalidate>
+          <div class="field-group">
+            <label for="user-account">门户账号</label>
+            <div class="input-shell">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+              <input id="user-account" type="text" autocomplete="username" autocapitalize="none" maxlength="128" placeholder="请输入门户账号">
+            </div>
+          </div>
+
+          <div class="field-group">
+            <label for="password">门户密码</label>
+            <div class="input-shell password-shell">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+              <input id="password" type="password" autocomplete="current-password" maxlength="512" placeholder="请输入门户密码">
+              <button class="visibility-button" id="toggle-password" type="button" aria-label="显示密码">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <button class="primary-button" id="send-sms" type="button">
+            <span class="button-label">发送短信验证码</span><i class="spinner"></i>
+          </button>
+
+          <div class="verification-panel" id="verification-panel" hidden>
+            <div class="verification-divider"><span></span><strong>验证码已发送到绑定手机</strong><span></span></div>
+            <div class="field-group">
+              <label for="sms-code">短信验证码</label>
+              <div class="code-row">
+                <input id="sms-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="20" placeholder="请输入验证码">
+                <span class="countdown" id="countdown">10:00</span>
+              </div>
+            </div>
+            <button class="primary-button accent" id="complete-login" type="submit">
+              <span class="button-label">验证并上传 Token</span><i class="spinner"></i>
+            </button>
+          </div>
+        </form>
+
+        <div class="inline-message" id="inline-message" role="status" aria-live="polite" hidden></div>
+        <p class="privacy-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 19 6v5c0 4.7-2.9 8-7 10-4.1-2-7-5.3-7-10V6l7-3Z"/><path d="m9 12 2 2 4-5"/></svg>
+          密码仅用于本机门户登录，不会写入文件，也不会上传云端。
+        </p>
+      </section>
+
+      <section class="success-card reveal" id="success-card" aria-live="polite" hidden>
+        <span class="success-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+        </span>
+        <div><small>TOKEN UPLOADED</small><h2 id="success-title">上传完成</h2><p id="success-detail"></p></div>
+      </section>
+
+      <footer>
+        <span><i></i>请求出口：当前设备网络</span>
+        <span>关闭程序即清除本次登录信息</span>
+      </footer>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toast-icon">✓</span><p id="toast-message"></p></div>
+    <script src="app.js"></script>
+  </body>
+</html>

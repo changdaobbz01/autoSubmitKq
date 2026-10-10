@@ -1,6 +1,6 @@
 # 考勤凭证助手
 
-这是一个面向手机的门户短信验证页面，以及供本地考勤程序获取 Token 的 Spring Boot API 服务。
+这是一个用于集中保存考勤 Token 的 Spring Boot API 服务，以及供本地考勤程序读取 Token 的同步接口。门户受地域网络限制时，可由配套 Windows 桌面采集器在用户设备完成短信登录，再把 Token 上传到本服务。
 
 当前版本只保留短信验证码流程，不包含图片验证码：
 
@@ -99,6 +99,25 @@ $result | ConvertTo-Json -Depth 6
 - 密码永远不会通过该接口返回。
 
 调用方可以持久化最后成功处理的 `nextRevision` 做增量同步。当前配套本地程序账号量较小，手动同步和打卡前自动同步都从 `since=0` 分页读取完整快照，再只更新本地已有同名账号的 Token；这样本地后来导入账号时也能匹配到云端较早保存的记录。
+
+## 设备端 Token 上传接口
+
+接口：
+
+```http
+POST /api/mobile/v1/tokens
+X-Mobile-Access-Key: <MOBILE_ACCESS_KEY>
+Content-Type: application/json
+
+{
+  "token": "<attendance-jwt>",
+  "userAccount": "account01",
+  "realName": "测试用户",
+  "department": "运维组"
+}
+```
+
+服务端会解析 JWT 载荷，校验 Token 中的账号与上传账号一致且尚未过期，然后按账号加密覆盖 Token、递增 revision。该接口不会接收或保存门户密码。
 
 ## 安全与运维
 
