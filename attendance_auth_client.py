@@ -24,6 +24,12 @@ from runtime_paths import APP_ROOT
 
 DEFAULT_ATTENDANCE_TLS_HOST = "ad-pro.xyang.xin"
 DEFAULT_ATTENDANCE_CONNECT_HOST = "111.48.251.180"
+# Temporary pin for the upstream certificate that expired on 2026-11-10 UTC.
+# Normal CA validation is always attempted first, so a renewed certificate needs no fallback.
+ATTENDANCE_EXPIRED_CERT_SHA256 = os.getenv(
+    "ATTENDANCE_EXPIRED_CERT_SHA256",
+    "455572DD3A01764FE03BA95E389A90EB802473DC4A00D49FA6C33AB6F37E3620",
+).strip()
 BASE_PAGE_URL = os.getenv(
     "ATTENDANCE_PAGE_URL",
     "https://111.48.251.180:20002/ad/#/home",
@@ -406,6 +412,12 @@ class AttendanceAuthClient:
                 request,
                 timeout=self.timeout_seconds,
                 host_overrides=host_overrides,
+                expired_certificate_pins=(
+                    {DEFAULT_ATTENDANCE_TLS_HOST: ATTENDANCE_EXPIRED_CERT_SHA256}
+                    if self._api_host == DEFAULT_ATTENDANCE_TLS_HOST
+                    and ATTENDANCE_EXPIRED_CERT_SHA256
+                    else None
+                ),
             ) as response:
                 charset = response.headers.get_content_charset() or "utf-8"
                 raw = response.read().decode(charset, errors="ignore")

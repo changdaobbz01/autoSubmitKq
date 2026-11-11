@@ -123,6 +123,8 @@ $env:ATTENDANCE_PORTAL_API_URL = "http://111.48.251.187:8003/zsyw/code"
 
 `ATTENDANCE_CONNECT_HOST` 只填写目标 IP；程序仍使用 `ATTENDANCE_API_URL` 中的域名进行 SNI 和证书校验，不会全局关闭 HTTPS 校验。
 
+若上游证书仅因过期而校验失败，程序会对当前已核验的证书执行 SHA-256 精确指纹兜底；域名错误、证书更换或指纹不一致仍会拒绝连接。正常 CA 校验始终优先，上游续证后会自动使用新证书。可通过 `ATTENDANCE_EXPIRED_CERT_SHA256` 覆盖指纹，设置为空字符串可禁用该临时兜底。
+
 ## 测试
 
 ```powershell
